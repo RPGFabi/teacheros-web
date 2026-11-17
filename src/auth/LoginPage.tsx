@@ -34,7 +34,7 @@ export default function LoginPage({ notice }: { notice?: string }) {
       if (result.status === 'mfa_required') {
         setChallenge({ token: result.challengeToken });
       }
-    }, 'Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen.');
+    }, 'Anmeldung fehlgeschlagen. Bitte Kennung und Passwort prüfen.');
   };
 
   const submitCode = (event: FormEvent) => {
@@ -59,8 +59,8 @@ export default function LoginPage({ notice }: { notice?: string }) {
           </form>
         ) : (
           <form onSubmit={submitLogin}>
-            <FormField label="E-Mail" htmlFor="login-email">
-              <TextInput id="login-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <FormField label="E-Mail oder Anmeldename" htmlFor="login-email">
+              <TextInput id="login-email" type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
             </FormField>
             <FormField label="Passwort" htmlFor="login-password">
               <TextInput id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />

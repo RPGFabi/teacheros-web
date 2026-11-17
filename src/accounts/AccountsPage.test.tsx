@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import AccountsPage from './AccountsPage';
 import { fakeClient } from '../test/fakeHttp';
 
@@ -47,7 +47,7 @@ describe('Konten: Rechte', () => {
 
     await screen.findByText('neu@schule.test', { selector: 'td' });
     expect(screen.queryByRole('button', { name: 'Einladen' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('E-Mail')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('E-Mail (optional)')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Erneut einladen/ })).not.toBeInTheDocument();
   });
 
@@ -64,7 +64,7 @@ describe('Konten: Einladen', () => {
   async function invite(client: ReturnType<typeof fakeClient>['client'], email: string, loginName?: string) {
     render(<AccountsPage apiClient={client} canInvite />);
     await screen.findByText('admin@schule.test', { selector: 'td' });
-    await userEvent.type(screen.getByLabelText('E-Mail'), email);
+    await userEvent.type(screen.getByLabelText('E-Mail (optional)'), email);
     if (loginName) await userEvent.type(screen.getByLabelText('Anmeldename (optional)'), loginName);
     await userEvent.click(screen.getByRole('button', { name: 'Einladen' }));
   }
@@ -84,7 +84,7 @@ describe('Konten: Einladen', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Einladung an neu@schule.test gesendet');
     expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ email: 'neu@schule.test', login_name: 'max.muster' });
     expect(await screen.findByText('max.muster', { selector: 'td' })).toBeInTheDocument();
-    expect(screen.getByLabelText('E-Mail')).toHaveValue('');
+    expect(screen.getByLabelText('E-Mail (optional)')).toHaveValue('');
   });
 
   it('laesst den Anmeldenamen weg, wenn er leer ist', async () => {
@@ -96,11 +96,22 @@ describe('Konten: Einladen', () => {
     expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ email: 'neu@schule.test' });
   });
 
+  it('verlangt E-Mail oder Anmeldename: ohne beides ist Einladen gesperrt', async () => {
+    const { client } = fakeClient(list(ADMIN));
+    render(<AccountsPage apiClient={client} canInvite />);
+    await screen.findByText('admin@schule.test', { selector: 'td' });
+
+    expect(screen.getByRole('button', { name: 'Einladen' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Anmeldename (optional)'), 'nur-name');
+    expect(screen.getByRole('button', { name: 'Einladen' })).toBeEnabled();
+  });
+
   it.each([
     ['username_taken', 409, 'Dieser Anmeldename ist schon vergeben'],
     ['email_taken', 409, 'Diese E-Mail-Adresse gehört schon zu einem anderen Konto'],
     ['already_active', 409, 'Dieses Konto ist schon aktiv'],
     ['account_inactive', 409, 'Dieses Konto ist deaktiviert'],
+    ['identifier_required', 400, 'Bitte geben Sie eine E-Mail-Adresse oder einen Anmeldenamen an'],
     ['invalid_email', 400, 'Die E-Mail-Adresse ist ungültig'],
     ['invalid_username', 400, 'Der Anmeldename ist ungültig'],
     ['auth_unavailable', 502, 'Der Anmeldedienst ist gerade nicht erreichbar']
@@ -110,7 +121,7 @@ describe('Konten: Einladen', () => {
     await invite(client, 'neu@schule.test');
 
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
-    expect(screen.getByLabelText('E-Mail')).toHaveValue('neu@schule.test');
+    expect(screen.getByLabelText('E-Mail (optional)')).toHaveValue('neu@schule.test');
   });
 
   it('zeigt bei unbekanntem Fehler eine allgemeine Meldung', async () => {
@@ -146,5 +157,90 @@ describe('Konten: Erneut einladen', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Erneut einladen/ }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Dieses Konto ist schon aktiv');
+  });
+});
+
+describe('Konten: Einladung per Anmeldename mit Einladungskarte', () => {
+  const PUPIL = { id: '44444444-4444-4444-8444-444444444444', email: null, login_name: 'schueler.eins', status: 'invited', invited_at: '2026-11-17T12:00:00+00:00' };
+  const CODE = 'ABCD-EFGH-JKMN-PQRS';
+  const renderPage = (client: ReturnType<typeof fakeClient>['client']) =>
+    render(<AccountsPage apiClient={client} canInvite schoolName="Goethe-Schule" origin="https://schule.example.test" />);
+
+  async function invitePupil(client: ReturnType<typeof fakeClient>['client']) {
+    renderPage(client);
+    await screen.findByText('admin@schule.test', { selector: 'td' });
+    await userEvent.type(screen.getByLabelText('Anmeldename (optional)'), 'schueler.eins');
+    await userEvent.click(screen.getByRole('button', { name: 'Einladen' }));
+  }
+
+  it('sendet nur den Anmeldenamen und zeigt den Code auf einer Einladungskarte mit QR-Link', async () => {
+    const { client, calls } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: PUPIL, invite_code: CODE } } });
+
+    await invitePupil(client);
+
+    const card = await screen.findByRole('article');
+    expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ login_name: 'schueler.eins' });
+    expect(within(card).getByText(CODE)).toBeInTheDocument();
+    expect(within(card).getByText('schueler.eins')).toBeInTheDocument();
+    expect(within(card).getByText('Goethe-Schule')).toBeInTheDocument();
+    expect(within(card).getByTestId('invitation-qr')).toHaveAttribute('data-qr-value', `https://schule.example.test/einladung?code=${CODE}`);
+    expect(screen.getByRole('status')).toHaveTextContent('Einladung für schueler.eins erstellt');
+    expect(screen.getByText(/nur jetzt angezeigt/)).toBeInTheDocument();
+  });
+
+  it('zeigt den Code genau einmal: nach Schliessen ist er weg und kommt nicht wieder', async () => {
+    let accounts = [ADMIN];
+    const { client } = fakeClient({
+      'GET /api/accounts': () => ({ data: { accounts } }),
+      'POST /api/accounts/invitations': () => {
+        accounts = [...accounts, PUPIL];
+        return { status: 201, data: { account: PUPIL, invite_code: CODE } };
+      }
+    });
+    await invitePupil(client);
+    await screen.findByRole('article');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Karte schließen' }));
+
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(await screen.findByText('schueler.eins', { selector: 'td' })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(CODE);
+  });
+
+  it('druckt die Karte ueber den Browser-Druckdialog', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: PUPIL, invite_code: CODE } } });
+    await invitePupil(client);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Karte drucken' }));
+
+    expect(print).toHaveBeenCalledTimes(1);
+    print.mockRestore();
+  });
+
+  it('zeigt bei Einladung mit E-Mail (ohne Code) keine Karte', async () => {
+    const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: INVITED, invite_code: null } } });
+    renderPage(client);
+    await screen.findByText('admin@schule.test', { selector: 'td' });
+    await userEvent.type(screen.getByLabelText('E-Mail (optional)'), 'neu@schule.test');
+    await userEvent.click(screen.getByRole('button', { name: 'Einladen' }));
+
+    await screen.findByRole('status');
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('Erneut einladen ohne E-Mail zeigt die Karte mit dem neuen Code', async () => {
+    const { client } = fakeClient({
+      ...list(PUPIL),
+      [`POST /api/accounts/${PUPIL.id}/reinvite`]: { data: { account: PUPIL, invite_code: 'WXYZ-2345-6789-ABCD' } }
+    });
+    renderPage(client);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Erneut einladen: schueler.eins' }));
+
+    const card = await screen.findByRole('article');
+    expect(within(card).getByText('WXYZ-2345-6789-ABCD')).toBeInTheDocument();
+    expect(within(card).getByTestId('invitation-qr')).toHaveAttribute('data-qr-value', 'https://schule.example.test/einladung?code=WXYZ-2345-6789-ABCD');
+    expect(screen.getByRole('status')).toHaveTextContent('Erneut eingeladen: schueler.eins');
   });
 });

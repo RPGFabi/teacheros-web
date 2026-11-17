@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 
 export interface AccountRow {
   id: string;
@@ -15,6 +16,16 @@ interface Props {
   apiClient: AxiosInstance;
   /** Recht `accounts.invite` aus GET /api/me; ohne es gibt es keine Einladen-Schaltflaechen. */
   canInvite: boolean;
+  /** Schulname auf der Einladungskarte; Standard `VITE_APP_NAME`. */
+  schoolName?: string;
+  /** Web-Origin fuer den QR-Link der Einladungskarte; Standard `window.location.origin`. */
+  origin?: string;
+}
+
+interface InvitationResponse {
+  account: AccountRow;
+  /** Nur bei Einladung ohne E-Mail und nur in dieser Antwort. */
+  invite_code: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = { active: 'Aktiv', invited: 'Eingeladen', inactive: 'Inaktiv' };
@@ -26,7 +37,7 @@ const ERROR_TEXT: Record<string, string> = {
   already_active: 'Dieses Konto ist schon aktiv und kann nicht erneut eingeladen werden.',
   account_inactive: 'Dieses Konto ist deaktiviert und kann nicht eingeladen werden.',
   account_not_found: 'Dieses Konto gibt es nicht mehr.',
-  email_required: 'Bitte geben Sie eine E-Mail-Adresse an.',
+  identifier_required: 'Bitte geben Sie eine E-Mail-Adresse oder einen Anmeldenamen an.',
   invalid_email: 'Die E-Mail-Adresse ist ungültig.',
   invalid_username: 'Der Anmeldename ist ungültig. Erlaubt sind 3 bis 64 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.',
   forbidden: 'Dafür fehlt Ihnen die Berechtigung.',
@@ -42,7 +53,12 @@ function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('de-DE') : '–';
 }
 
-export default function AccountsPage({ apiClient, canInvite }: Props) {
+export default function AccountsPage({
+  apiClient,
+  canInvite,
+  schoolName = import.meta.env.VITE_APP_NAME || 'Schulplattform',
+  origin = window.location.origin
+}: Props) {
   const [accounts, setAccounts] = useState<AccountRow[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [email, setEmail] = useState('');
@@ -50,6 +66,8 @@ export default function AccountsPage({ apiClient, canInvite }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Der Einladungscode lebt nur hier im Speicher: nach Schliessen oder der naechsten Aktion ist er weg.
+  const [card, setCard] = useState<InvitationCardData | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(false);
@@ -69,6 +87,7 @@ export default function AccountsPage({ apiClient, canInvite }: Props) {
     setBusy(true);
     setNotice(null);
     setError(null);
+    setCard(null);
     try {
       setNotice(await action());
       await load();
@@ -84,16 +103,24 @@ export default function AccountsPage({ apiClient, canInvite }: Props) {
     const address = email.trim();
     const name = loginName.trim();
     void run(async () => {
-      await apiClient.post('/api/accounts/invitations', name ? { email: address, login_name: name } : { email: address });
+      const body = { ...(address && { email: address }), ...(name && { login_name: name }) };
+      const { data } = await apiClient.post<InvitationResponse>('/api/accounts/invitations', body);
       setEmail('');
       setLoginName('');
+      if (data.invite_code) {
+        setCard({ loginName: data.account.login_name, code: data.invite_code });
+        return `Einladung für ${data.account.login_name} erstellt.`;
+      }
       return `Einladung an ${address} gesendet.`;
     });
   };
 
   const reinvite = (account: AccountRow) =>
     void run(async () => {
-      await apiClient.post(`/api/accounts/${account.id}/reinvite`);
+      const { data } = await apiClient.post<InvitationResponse>(`/api/accounts/${account.id}/reinvite`);
+      if (data.invite_code) {
+        setCard({ loginName: data.account.login_name, code: data.invite_code });
+      }
       return `Erneut eingeladen: ${account.email ?? account.login_name}. Die vorige Einladung ist ungültig.`;
     });
 
@@ -104,18 +131,36 @@ export default function AccountsPage({ apiClient, canInvite }: Props) {
         <Card>
           <form onSubmit={submitInvite}>
             <h2>Konto einladen</h2>
-            <FormField label="E-Mail" htmlFor="invite-email">
+            <FormField label="E-Mail (optional)" htmlFor="invite-email">
               <TextInput id="invite-email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
             </FormField>
             <FormField label="Anmeldename (optional)" htmlFor="invite-login-name">
               <TextInput id="invite-login-name" autoComplete="off" value={loginName} onChange={(e) => setLoginName(e.target.value)} />
             </FormField>
-            <p>Ohne Anmeldenamen meldet sich die Person mit ihrer E-Mail-Adresse an.</p>
-            <Button type="submit" disabled={busy || email.trim() === ''}>Einladen</Button>
+            <p>
+              Mit E-Mail-Adresse bekommt die Person die Einladung per Mail; ohne Anmeldenamen meldet sie sich mit der E-Mail-Adresse an.
+              Ohne E-Mail-Adresse erscheint ein Einladungscode auf einer druckbaren Einladungskarte.
+            </p>
+            <Button type="submit" disabled={busy || (email.trim() === '' && loginName.trim() === '')}>Einladen</Button>
           </form>
         </Card>
       )}
       {notice && <p role="status">{notice}</p>}
+      {card && (
+        <section className="invitation-print" aria-label="Einladungskarte">
+          <Card>
+            <h2 className="screen-only">Einladungskarte</h2>
+            <p className="screen-only">
+              Der Einladungscode wird nur jetzt angezeigt und nirgends gespeichert. Drucken Sie die Karte aus, bevor Sie sie schließen.
+            </p>
+            <InvitationCards cards={[card]} schoolName={schoolName} origin={origin} />
+            <p className="screen-only">
+              <Button onClick={() => window.print()}>Karte drucken</Button>{' '}
+              <Button variant="secondary" onClick={() => setCard(null)}>Karte schließen</Button>
+            </p>
+          </Card>
+        </section>
+      )}
       {error && <p role="alert">{error}</p>}
       <Card>
         {loadError && (

@@ -18,7 +18,7 @@ function setup(authRoutes = {}, apiRoutes = {}) {
 }
 
 async function fillLogin(email = 'lehrer@example.test', password = 'geheim123') {
-  await userEvent.type(await screen.findByLabelText('E-Mail'), email);
+  await userEvent.type(await screen.findByLabelText('E-Mail oder Anmeldename'), email);
   await userEvent.type(screen.getByLabelText('Passwort'), password);
   await userEvent.click(screen.getByRole('button', { name: 'Anmelden' }));
 }
@@ -42,6 +42,16 @@ describe('Anmeldung und Mein Konto', () => {
     expect(screen.getByText('lehrer@example.test')).toBeInTheDocument();
     expect(screen.getByText('Aktiv')).toBeInTheDocument();
     expect(api.calls.find((c) => c.url === '/api/me')?.authorization).toBe('Bearer jwt-1');
+  });
+
+  it('nimmt im Login-Feld auch einen Anmeldenamen an und sendet ihn als Kennung im Feld email', async () => {
+    const { auth } = setup({ 'POST /login': { data: { token: 'jwt-3', email: 'schueler.eins' } } });
+
+    expect(await screen.findByLabelText('E-Mail oder Anmeldename')).toHaveAttribute('type', 'text');
+    await fillLogin('schueler.eins');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Mein Konto' })).toBeInTheDocument();
+    expect(auth.calls.find((c) => c.url === '/login')?.data).toMatchObject({ email: 'schueler.eins', password: 'geheim123' });
   });
 
   it('fuehrt bei aktivierter MFA durch die Challenge und zeigt danach Mein Konto', async () => {

@@ -90,3 +90,31 @@ h1 {
   .menu-toggle { display: none; }
   .nav { display: flex; flex-direction: row; padding-bottom: 24px; }
 }
+
+/* Einladungskarten (Ticket #28): 10 x 3 cm, QR links, Text rechts; Druck auf A4 im Raster 2 x 9 */
+.invitation-sheet { display: grid; grid-template-columns: repeat(auto-fill, 10cm); gap: 12px; justify-content: start; }
+.invitation-card {
+  display: flex; align-items: center; gap: 0.25cm;
+  width: 10cm; height: 3cm; padding: 0.2cm; overflow: hidden;
+  background: #fff; color: #000; border: 1px dashed #666; break-inside: avoid;
+}
+.invitation-card__qr { flex: none; width: 2.6cm; height: 2.6cm; line-height: 0; }
+.invitation-card__qr svg { width: 100%; height: 100%; }
+.invitation-card__text { min-width: 0; flex: 1; }
+.invitation-card__text p { margin: 0; line-height: 1.25; }
+.invitation-card__school { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.invitation-card__name { font-size: 9pt; }
+.invitation-card__code { font-family: ui-monospace, 'Cascadia Mono', 'Courier New', monospace; font-size: 13pt; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+.invitation-card__small { font-size: 7pt; color: #333; }
+
+@media print {
+  @page { size: A4 portrait; margin: 1.2cm 0.5cm; }
+  html, body, #root { background: #fff; min-height: 0; }
+  .app-shell { max-width: none; margin: 0; padding: 0; }
+  .app-shell > header, .app-shell > nav, .content > :not(.invitation-print), .screen-only { display: none !important; }
+  .content { padding: 0; }
+  .invitation-print .card { border: 0; background: none; box-shadow: none; padding: 0; }
+  .invitation-sheet { grid-template-columns: repeat(2, 10cm); gap: 0; justify-content: center; }
+  /* Die gemeinsamen Raender der Karten sind die Schnittlinien. */
+  .invitation-card { border: 0.1mm solid #000; }
+}
