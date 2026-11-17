@@ -3,6 +3,7 @@ import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
+import AccountsPage from './accounts/AccountsPage';
 import { apiClient as defaultApiClient } from './api/client';
 
 
@@ -64,6 +65,8 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
       </nav>
       {portal.id === 'account' ? (
         <AccountPage me={me} error={meError} />
+      ) : portal.id === 'accounts' ? (
+        <AccountsPage apiClient={apiClient} canInvite={(me?.permissions ?? []).includes('accounts.invite')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>

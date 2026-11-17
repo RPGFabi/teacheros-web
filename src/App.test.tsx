@@ -72,3 +72,33 @@ describe('Menuepunkt Konten (Rechte aus GET /api/me)', () => {
     expect(screen.queryByRole('link', { name: 'Konten' })).not.toBeInTheDocument();
   });
 });
+
+describe('Seite Konten in der App-Schale', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+  const ACCOUNTS = { accounts: [{ id: '2', email: 'neu@schule.test', login_name: 'neu', status: 'invited', invited_at: '2026-11-12T12:00:00+00:00' }] };
+
+  async function openAccounts(permissions: string[]) {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(permissions) }, 'GET /api/accounts': { data: ACCOUNTS } });
+    render(<App apiClient={client} />);
+    await userEvent.click(await screen.findByRole('link', { name: 'Konten' }));
+    await screen.findByText('neu@schule.test', { selector: 'td' });
+  }
+
+  it('zeigt mit accounts.invite das Einladen-Formular und Erneut einladen', async () => {
+    await openAccounts(['accounts.view', 'accounts.invite']);
+
+    expect(screen.getByRole('button', { name: 'Einladen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Erneut einladen/ })).toBeInTheDocument();
+  });
+
+  it('zeigt nur mit accounts.view die Liste ohne Einladen-Schaltflaechen', async () => {
+    await openAccounts(['accounts.view']);
+
+    expect(screen.queryByRole('button', { name: 'Einladen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Erneut einladen/ })).not.toBeInTheDocument();
+  });
+});
