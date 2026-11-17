@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Root from './Root';
 import { fakeClient } from './test/fakeHttp';
 
@@ -115,5 +115,36 @@ describe('Anmeldung und Mein Konto', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Mein Konto' });
     expect(screen.queryByRole('link', { name: 'Konten' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Seite /einladung (oeffentlich, ohne Anmeldung)', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it('nimmt die Einladung ueber ?token= an und leitet danach zur Anmeldung mit Hinweis', async () => {
+    window.history.pushState(null, '', '/einladung?token=tok-1');
+    const { auth } = setup({ 'POST /acceptInvite': { data: { ok: 'Dein Konto ist eingerichtet.' } } });
+
+    await userEvent.type(await screen.findByLabelText('Passwort'), 'Neues!Passwort22');
+    await userEvent.type(screen.getByLabelText('Passwort wiederholen'), 'Neues!Passwort22');
+    await userEvent.click(screen.getByRole('button', { name: 'Passwort setzen' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Ihr Passwort ist gesetzt');
+    expect(auth.calls.find((c) => c.url === '/acceptInvite')?.data).toEqual({ token: 'tok-1', password: 'Neues!Passwort22' });
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it('nutzt ?code= aus dem QR-Code der Einladungskarte', async () => {
+    window.history.pushState(null, '', '/einladung?code=ABCD-EFGH-JKMN-PQRS');
+    const { auth } = setup({ 'POST /acceptInvite': { data: {} } });
+
+    await userEvent.type(await screen.findByLabelText('Passwort'), 'Neues!Passwort22');
+    await userEvent.type(screen.getByLabelText('Passwort wiederholen'), 'Neues!Passwort22');
+    await userEvent.click(screen.getByRole('button', { name: 'Passwort setzen' }));
+
+    await screen.findByRole('heading', { level: 1, name: 'Anmelden' });
+    expect(auth.calls.find((c) => c.url === '/acceptInvite')?.data).toEqual({ code: 'ABCD-EFGH-JKMN-PQRS', password: 'Neues!Passwort22' });
   });
 });

@@ -6,7 +6,7 @@ interface Challenge {
   token: string;
 }
 
-export default function LoginPage() {
+export default function LoginPage({ notice }: { notice?: string }) {
   const { login, verifyMfaChallenge } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +46,7 @@ export default function LoginPage() {
   return (
     <main className="content login">
       <h1>Anmelden</h1>
+      {notice && <p role="status">{notice}</p>}
       <Card>
         {challenge ? (
           <form onSubmit={submitCode}>
