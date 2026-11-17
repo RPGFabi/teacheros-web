@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
+import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
+import AccountPage from './account/AccountPage';
+import { apiClient as defaultApiClient } from './api/client';
 
 
 
-export default function App() {
-  const [active, setActive] = useState<PortalId>('teacher');
+export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
+  const [active, setActive] = useState<PortalId>(initialPortal);
   const [menuOpen, setMenuOpen] = useState(false);
   const portal = portals.find((p) => p.id === active)!;
 
@@ -39,12 +42,16 @@ export default function App() {
           </a>
         ))}
       </nav>
-      <main className="content">
-        <h1>{portal.label}</h1>
-        <Card>
-          <p>{portal.description}</p>
-        </Card>
-      </main>
+      {active === 'account' ? (
+        <AccountPage apiClient={apiClient} />
+      ) : (
+        <main className="content">
+          <h1>{portal.label}</h1>
+          <Card>
+            <p>{portal.description}</p>
+          </Card>
+        </main>
+      )}
     </div>
   );
 }
