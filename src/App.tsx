@@ -1,50 +1,50 @@
+import { useState } from 'react';
+import { Button, Card } from '@hoelzle/react-ui';
+import { portals, type PortalId } from './app/routes';
+
+
+
 export default function App() {
+  const [active, setActive] = useState<PortalId>('teacher');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const portal = portals.find((p) => p.id === active)!;
+
   return (
-    <main className="app-shell">
+    <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">TeacherOS</p>
-          <h1>Schulmanagement & Unterrichts-OS</h1>
-        </div>
+        <span className="brand">Schulplattform</span>
+        <Button
+          variant="ghost"
+          className="menu-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="main-nav"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          Menü
+        </Button>
       </header>
-
-      <section className="grid">
-        <article className="card">
-          <h2>Core</h2>
-          <ul>
-            <li>Schuljahre und Klassen</li>
-            <li>Lehrkräfte und Berechtigungen</li>
-            <li>Stammdaten und Imports</li>
-          </ul>
-        </article>
-
-        <article className="card">
-          <h2>Bewertung</h2>
-          <ul>
-            <li>ICE-Schnellerfassung</li>
-            <li>Beobachtungen und Noten</li>
-            <li>Feedbackvorlagen</li>
-          </ul>
-        </article>
-
-        <article className="card">
-          <h2>Unterricht</h2>
-          <ul>
-            <li>Stundenplan und Terminlogik</li>
-            <li>Klassenbuch und Stoffplan</li>
-            <li>Anwesenheit und Materialien</li>
-          </ul>
-        </article>
-
-        <article className="card">
-          <h2>Schule</h2>
-          <ul>
-            <li>Formulare und Rückläufer</li>
-            <li>Nachrichten und Benachrichtigungen</li>
-            <li>Vertretungen und Ausplanung</li>
-          </ul>
-        </article>
-      </section>
-    </main>
+      <nav id="main-nav" aria-label="Hauptnavigation" className={menuOpen ? 'nav nav-open' : 'nav'}>
+        {portals.map((p) => (
+          <a
+            key={p.id}
+            href={p.path}
+            aria-current={p.id === active ? 'page' : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              setActive(p.id);
+              setMenuOpen(false);
+            }}
+          >
+            {p.label}
+          </a>
+        ))}
+      </nav>
+      <main className="content">
+        <h1>{portal.label}</h1>
+        <Card>
+          <p>{portal.description}</p>
+        </Card>
+      </main>
+    </div>
   );
 }

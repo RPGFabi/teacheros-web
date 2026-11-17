@@ -1,0 +1,22 @@
+name: CI
+on:
+  push:
+    branches: [main, 'integration/**']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Private GitHub-Pakete (@hoelzle/react-ui, react-auth) brauchen Lesezugriff.
+      # Secret PACKAGES_TOKEN: PAT mit Lesezugriff auf RPGFabi/React-UI und RPGFabi/React-Auth.
+      - run: git config --global url."https://x-access-token:${{ secrets.PACKAGES_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

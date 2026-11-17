@@ -76,3 +76,17 @@ h1 {
 .card li + li {
   margin-top: 8px;
 }
+
+/* App-Schale: Navigation, responsiv */
+.app-shell { max-width: 1200px; margin: 0 auto; padding: 0 16px 48px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+.brand { font-weight: 700; font-size: 1.25rem; }
+.nav { display: none; flex-direction: column; gap: 8px; padding-bottom: 16px; }
+.nav.nav-open { display: flex; }
+.nav a { color: inherit; text-decoration: none; padding: 10px 12px; border-radius: 8px; }
+.nav a[aria-current='page'] { background: rgba(255, 255, 255, 0.12); font-weight: 600; }
+.content { padding-top: 8px; }
+@media (min-width: 768px) {
+  .menu-toggle { display: none; }
+  .nav { display: flex; flex-direction: row; padding-bottom: 24px; }
+}
