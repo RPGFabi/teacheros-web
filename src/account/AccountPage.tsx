@@ -1,34 +1,17 @@
-import { useEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import { useAuth } from '@hoelzle/react-auth';
-import type { AxiosInstance } from 'axios';
 
-interface Me {
+export interface Me {
   account: { id: string; status: string; mfa_required: boolean };
+  /** Effektive Rechte, fertig aufgeloest von der API (nie eine Wildcard). */
+  permissions: string[];
   session: { used_mfa: boolean; expires_at: string };
 }
 
 const STATUS_LABEL: Record<string, string> = { active: 'Aktiv', invited: 'Eingeladen', inactive: 'Inaktiv' };
 
-export default function AccountPage({ apiClient }: { apiClient: AxiosInstance }) {
+export default function AccountPage({ me, error }: { me: Me | null; error: string | null }) {
   const { currentMail, logout } = useAuth();
-  const [me, setMe] = useState<Me | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiClient
-      .get<Me>('/api/me')
-      .then((response) => !cancelled && setMe(response.data))
-      .catch((err) => {
-        if (cancelled) return;
-        const code = err?.response?.data?.code;
-        setError(code === 'account_inactive' ? 'Ihr Konto ist nicht aktiv. Bitte wenden Sie sich an die Schuladministration.' : 'Die Kontodaten konnten nicht geladen werden.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient]);
 
   return (
     <main className="content">

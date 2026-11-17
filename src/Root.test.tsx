@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import Root from './Root';
@@ -6,6 +6,7 @@ import { fakeClient } from './test/fakeHttp';
 
 const ME = {
   account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+  permissions: [] as string[],
   session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
 };
 
@@ -93,5 +94,26 @@ describe('Anmeldung und Mein Konto', () => {
     await fillLogin();
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Ihr Konto ist nicht aktiv'));
+  });
+
+  it('zeigt nach der Anmeldung Konten, wenn /api/me das Recht accounts.view liefert', async () => {
+    setup(
+      { 'POST /login': { data: { token: 'jwt-1', email: 'admin@example.test' } } },
+      { 'GET /api/me': { data: { ...ME, permissions: ['accounts.view', 'accounts.invite'] } } }
+    );
+
+    await fillLogin('admin@example.test');
+
+    const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
+    expect(await within(nav).findByRole('link', { name: 'Konten' })).toBeInTheDocument();
+  });
+
+  it('zeigt Konten nicht fuer ein Konto ohne Rechte', async () => {
+    setup({ 'POST /login': { data: { token: 'jwt-1', email: 'lehrer@example.test' } } });
+
+    await fillLogin();
+
+    await screen.findByRole('heading', { level: 1, name: 'Mein Konto' });
+    expect(screen.queryByRole('link', { name: 'Konten' })).not.toBeInTheDocument();
   });
 });
