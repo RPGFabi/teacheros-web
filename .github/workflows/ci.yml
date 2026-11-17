@@ -11,7 +11,12 @@ jobs:
       - uses: actions/checkout@v4
       # Private GitHub-Pakete (@hoelzle/react-ui, react-auth) brauchen Lesezugriff.
       # Secret PACKAGES_TOKEN: PAT mit Lesezugriff auf RPGFabi/React-UI und RPGFabi/React-Auth.
-      - run: git config --global url."https://x-access-token:${{ secrets.PACKAGES_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      # package-lock.json loest die Pakete als git+ssh auf; auch diese Formen auf HTTPS + Token umlenken.
+      - run: |
+          base="https://x-access-token:${{ secrets.PACKAGES_TOKEN }}@github.com/"
+          git config --global url."$base".insteadOf "https://github.com/"
+          git config --global --add url."$base".insteadOf "ssh://git@github.com/"
+          git config --global --add url."$base".insteadOf "git@github.com:"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
