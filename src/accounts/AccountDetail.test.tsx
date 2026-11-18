@@ -489,3 +489,86 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     expect(await screen.findByText(/Deaktiviert seit 18\.11\.2026 \(Abgleich offen\)/)).toBeInTheDocument();
   });
 });
+
+describe('Kontodetail: Konto reaktivieren (Ticket #43)', () => {
+  const REACTIVATE = `POST /api/accounts/${ID}/reactivate`;
+  const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
+  const INACTIVE: AccountAccess = {
+    ...ACCESS,
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: false },
+    account_actions: [BLOCKED_DEACTIVATE, { action: 'reactivate', allowed: true, code: null, reason: null }]
+  };
+  const ACTIVE_AGAIN: AccountAccess = { ...ACCESS, account: { ...ACCESS.account, login_sync_pending: false } };
+
+  it('zeigt „Reaktivieren“ aktiv bei einem deaktivierten Konto, wenn die API die Aktion erlaubt', async () => {
+    mount({ [path]: { data: INACTIVE } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(within(section).getByRole('button', { name: 'Reaktivieren' })).toBeEnabled();
+  });
+
+  it('zeigt keinen Knopf „Reaktivieren“, wenn die API die Aktion nicht nennt (aktives Konto)', async () => {
+    mount({});
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByRole('button', { name: 'Reaktivieren' })).not.toBeInTheDocument();
+  });
+
+  it('reaktiviert per POST und zeigt danach Status und die Antwort der API', async () => {
+    const { calls } = mount({ [path]: { data: INACTIVE }, [REACTIVATE]: { data: ACTIVE_AGAIN } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reaktivieren' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Konto reaktiviert');
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/reactivate`]);
+    expect(screen.getByText(/Aktiv ·/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reaktivieren' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deaktivieren …' })).toBeEnabled();
+  });
+
+  it('laesst die Aktion sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
+    const reason = 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht reaktivieren.';
+    mount({
+      [path]: { data: { ...INACTIVE, account_actions: [BLOCKED_DEACTIVATE, { action: 'reactivate', allowed: false, code: 'permission_not_held', reason }] } }
+    });
+
+    const button = await screen.findByRole('button', { name: 'Reaktivieren' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+    expect(screen.getByText(reason)).toBeVisible();
+  });
+
+  it.each([
+    ['self_deleted', 409, 'selbst gelöscht'],
+    ['email_unconfirmed', 409, 'noch nicht bestätigt'],
+    ['auth_unavailable', 502, 'Anmeldedienst ist gerade nicht erreichbar. Das Konto bleibt deaktiviert'],
+    ['account_not_inactive', 409, 'Nur deaktivierte Konten'],
+    ['self_reactivation', 409, 'nicht selbst reaktivieren'],
+    ['permission_not_held', 403, 'dürfen es deshalb nicht reaktivieren'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
+  ])('uebersetzt den Fehlercode %s in einen Text und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mount({ [path]: { data: INACTIVE }, [REACTIVATE]: { status, data: { error: 'x', code } } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reaktivieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+    expect(screen.getByText(/Deaktiviert seit 18\.11\.2026/)).toBeInTheDocument();
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [path]: { data: INACTIVE }, [REACTIVATE]: { status: 500 } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reaktivieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das Konto konnte nicht reaktiviert werden');
+  });
+
+  it('erklaert im Abschnitt Konto, dass alte Sitzungen nicht zurueckkommen', async () => {
+    mount({ [path]: { data: INACTIVE } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(section).toHaveTextContent('Die Person muss sich danach neu anmelden');
+  });
+});

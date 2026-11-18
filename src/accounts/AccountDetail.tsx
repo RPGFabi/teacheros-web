@@ -43,11 +43,23 @@ const RESYNC_ERROR_TEXT: Record<string, string> = {
   user_not_found: 'Der Anmeldedienst kennt dieses Konto nicht. Der Abgleich bleibt offen.'
 };
 
+/** Fehlertexte der Reaktivierung (Ticket #43); ersetzen bei gleichem Code die allgemeinen Texte. */
+const REACTIVATE_ERROR_TEXT: Record<string, string> = {
+  self_deleted: 'Die Person hat ihr Konto selbst gelöscht. Das lässt sich nicht rückgängig machen; das Konto bleibt deaktiviert.',
+  email_unconfirmed: 'Die E-Mail-Adresse der Person ist noch nicht bestätigt. Das Konto bleibt deaktiviert.',
+  auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Das Konto bleibt deaktiviert; bitte versuchen Sie es später noch einmal.',
+  user_not_found: 'Der Anmeldedienst kennt dieses Konto nicht. Das Konto bleibt deaktiviert.',
+  account_not_inactive: 'Nur deaktivierte Konten lassen sich reaktivieren.',
+  self_reactivation: 'Sie können sich nicht selbst reaktivieren.',
+  permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht reaktivieren.'
+};
+
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
 const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
 const RESYNC_FAILED = 'Der Abgleich konnte nicht wiederholt werden. Bitte versuchen Sie es erneut.';
+const REACTIVATE_FAILED = 'Das Konto konnte nicht reaktiviert werden. Bitte versuchen Sie es erneut.';
 const DEACTIVATE_FAILED = 'Das Konto konnte nicht deaktiviert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
@@ -70,6 +82,8 @@ function describeFailure(err: unknown, overrides: Record<string, string> = {}, f
  * `last_admin`) kommt als gesperrte Aktion mit Begruendung in `role_actions`.
  * Konto deaktivieren (Ticket #41): „Deaktivieren …“ mit Bestaetigungsdialog; ob die Aktion erlaubt ist, sagt die API in
  * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
+ * Reaktivierung (Ticket #43): bei einem deaktivierten Konto steht im Abschnitt „Konto“ „Reaktivieren“ (Aktion `reactivate`,
+ * gesperrt sichtbar mit Begruendung); die API ruft zuerst den Anmeldedienst, bei Fehlschlag bleibt das Konto deaktiviert.
  * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Sperre dort noch nicht gemeldet (`login_sync_pending`), steht im
  * Abschnitt „Konto“ ein Hinweis und „Abgleich wiederholen“ (Aktion `resync_login`, gesperrt sichtbar ohne Recht).
  */
@@ -146,6 +160,21 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     }
   }
 
+  async function reactivate() {
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/reactivate`)).data);
+      setNotice('Konto reaktiviert.');
+    } catch (err) {
+      setError(describeFailure(err, REACTIVATE_ERROR_TEXT, REACTIVATE_FAILED));
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resync() {
     setBusy(true);
     setNotice(null);
@@ -210,6 +239,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
 
   const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
   const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
+  const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const resyncAction = access.account.login_sync_pending ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
   const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const accountName = access.account.email ?? access.account.login_name;
@@ -272,6 +303,25 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
             <small id="deactivate-hint" style={{ display: 'block' }}>
               {deactivationBlocked}
             </small>
+          )}
+          {reactivation && (
+            <>
+              <h3>Konto reaktivieren</h3>
+              <p>Die Person kann sich danach wieder anmelden. Frühere Sitzungen bleiben beendet: Die Person muss sich danach neu anmelden.</p>
+              <Button
+                variant="secondary"
+                disabled={busy || reactivationBlocked !== null}
+                aria-describedby={reactivationBlocked ? 'reactivate-hint' : undefined}
+                onClick={() => void reactivate()}
+              >
+                Reaktivieren
+              </Button>
+              {reactivationBlocked && (
+                <small id="reactivate-hint" style={{ display: 'block' }}>
+                  {reactivationBlocked}
+                </small>
+              )}
+            </>
           )}
           {resyncAction && (
             <>

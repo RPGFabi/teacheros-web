@@ -43,10 +43,10 @@ export interface PermissionAction {
 
 /**
  * Eine Aktion am Konto selbst (Ticket #41: `deactivate`; Ticket #42: `resync_login` = „Abgleich wiederholen“, nur solange
- * der Abgleich offen ist); gesperrt mit Code und deutscher Begruendung.
+ * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten); gesperrt mit Code und deutscher Begruendung.
  */
 export interface AccountAction {
-  action: 'deactivate' | 'resync_login';
+  action: 'deactivate' | 'resync_login' | 'reactivate';
   allowed: boolean;
   code: string | null;
   reason: string | null;
