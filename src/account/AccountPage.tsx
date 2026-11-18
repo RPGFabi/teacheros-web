@@ -1,5 +1,6 @@
 import { Button, Card } from '@hoelzle/react-ui';
 import { useAuth } from '@hoelzle/react-auth';
+import { statusLabel } from './status';
 
 export interface Me {
   account: { id: string; status: string; mfa_required: boolean };
@@ -7,8 +8,6 @@ export interface Me {
   permissions: string[];
   session: { used_mfa: boolean; expires_at: string };
 }
-
-const STATUS_LABEL: Record<string, string> = { active: 'Aktiv', invited: 'Eingeladen', inactive: 'Inaktiv' };
 
 export default function AccountPage({ me, error }: { me: Me | null; error: string | null }) {
   const { currentMail, logout } = useAuth();
@@ -26,7 +25,7 @@ export default function AccountPage({ me, error }: { me: Me | null; error: strin
             <dt>Konto-ID</dt>
             <dd>{me.account.id}</dd>
             <dt>Status</dt>
-            <dd>{STATUS_LABEL[me.account.status] ?? me.account.status}</dd>
+            <dd>{statusLabel(me.account.status)}</dd>
             <dt>Anmeldung mit MFA</dt>
             <dd>{me.session.used_mfa ? 'Ja' : 'Nein'}</dd>
           </dl>

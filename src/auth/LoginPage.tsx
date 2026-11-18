@@ -34,7 +34,7 @@ export default function LoginPage({ notice }: { notice?: string }) {
       if (result.status === 'mfa_required') {
         setChallenge({ token: result.challengeToken });
       }
-    }, 'Anmeldung fehlgeschlagen. Bitte Kennung und Passwort prüfen.');
+    }, 'Anmeldung fehlgeschlagen. Bitte E-Mail bzw. Anmeldename und Passwort prüfen.');
   };
 
   const submitCode = (event: FormEvent) => {

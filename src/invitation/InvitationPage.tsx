@@ -76,12 +76,12 @@ export default function InvitationPage({ authClient, token, code, onAccepted }: 
   );
 }
 
-/** 400 mit Passwortregel: Meldung des Anmeldedienstes zeigen; sonstige 400: Link/Code unbrauchbar. */
+/** 400 `weak_password`: Passwortregel des Anmeldedienstes zeigen; jede andere 400 (`invalid_invite`): Link/Code unbrauchbar. */
 function describeFailure(err: unknown, linkInvalid: string): string {
-  const response = (err as { response?: { status?: number; data?: { error?: unknown } } })?.response;
+  const response = (err as { response?: { status?: number; data?: { error?: unknown; code?: unknown } } })?.response;
   if (response?.status === 400) {
     const message = response.data?.error;
-    return typeof message === 'string' && message.startsWith('Das Passwort') ? message : linkInvalid;
+    return response.data?.code === 'weak_password' && typeof message === 'string' ? message : linkInvalid;
   }
   if (response?.status === 429) {
     return 'Zu viele Versuche. Bitte warten Sie einen Moment und versuchen Sie es erneut.';

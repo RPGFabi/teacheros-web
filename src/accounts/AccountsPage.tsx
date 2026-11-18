@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import { statusLabel } from '../account/status';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 
 export interface AccountRow {
@@ -26,9 +27,9 @@ interface InvitationResponse {
   account: AccountRow;
   /** Nur bei Einladung ohne E-Mail und nur in dieser Antwort. */
   invite_code: string | null;
+  /** ISO 8601, bis wann die Einladung gilt; null, wenn der Anmeldedienst es nicht nennt. */
+  invite_expires_at?: string | null;
 }
-
-const STATUS_LABEL: Record<string, string> = { active: 'Aktiv', invited: 'Eingeladen', inactive: 'Inaktiv' };
 
 /** Verstaendliche Texte fuer die Fehlercodes der API (`{error, code}`). */
 const ERROR_TEXT: Record<string, string> = {
@@ -40,6 +41,9 @@ const ERROR_TEXT: Record<string, string> = {
   identifier_required: 'Bitte geben Sie eine E-Mail-Adresse oder einen Anmeldenamen an.',
   invalid_email: 'Die E-Mail-Adresse ist ungültig.',
   invalid_username: 'Der Anmeldename ist ungültig. Erlaubt sind 3 bis 64 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.',
+  username_login_disabled: 'Konten ohne E-Mail-Adresse sind an dieser Schulinstanz nicht eingerichtet. Bitte geben Sie eine E-Mail-Adresse an.',
+  account_disabled: 'Dieses Konto ist gesperrt und kann nicht eingeladen werden.',
+  invalid_request: 'Die Anfrage wurde abgelehnt. Bitte prüfen Sie Ihre Angaben.',
   forbidden: 'Dafür fehlt Ihnen die Berechtigung.',
   auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Es wurde nichts angelegt; bitte versuchen Sie es gleich noch einmal.'
 };
@@ -47,6 +51,11 @@ const ERROR_TEXT: Record<string, string> = {
 function describeFailure(err: unknown): string {
   const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
   return (typeof code === 'string' && ERROR_TEXT[code]) || 'Die Einladung konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
+}
+
+/** Daten der Einladungskarte zu einem Einladungscode der Antwort. */
+function cardFor(data: InvitationResponse, code: string): InvitationCardData {
+  return { loginName: data.account.login_name, code, validUntil: data.invite_expires_at };
 }
 
 function formatDate(iso: string | null): string {
@@ -108,10 +117,10 @@ export default function AccountsPage({
       setEmail('');
       setLoginName('');
       if (data.invite_code) {
-        setCard({ loginName: data.account.login_name, code: data.invite_code });
+        setCard(cardFor(data, data.invite_code));
         return `Einladung für ${data.account.login_name} erstellt.`;
       }
-      return `Einladung an ${address} gesendet.`;
+      return `Einladung an ${data.account.email ?? data.account.login_name} gesendet.`;
     });
   };
 
@@ -119,7 +128,7 @@ export default function AccountsPage({
     void run(async () => {
       const { data } = await apiClient.post<InvitationResponse>(`/api/accounts/${account.id}/reinvite`);
       if (data.invite_code) {
-        setCard({ loginName: data.account.login_name, code: data.invite_code });
+        setCard(cardFor(data, data.invite_code));
       }
       return `Erneut eingeladen: ${account.email ?? account.login_name}. Die vorige Einladung ist ungültig.`;
     });
@@ -187,7 +196,7 @@ export default function AccountsPage({
                 <tr key={account.id}>
                   <td>{account.email ?? '–'}</td>
                   <td>{account.login_name}</td>
-                  <td>{STATUS_LABEL[account.status] ?? account.status}</td>
+                  <td>{statusLabel(account.status)}</td>
                   <td>{formatDate(account.invited_at)}</td>
                   {canInvite && (
                     <td>

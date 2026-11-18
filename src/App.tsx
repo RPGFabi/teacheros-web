@@ -3,6 +3,7 @@ import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
+import { hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
 import { apiClient as defaultApiClient } from './api/client';
 
@@ -30,7 +31,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
   }, [apiClient]);
 
   // Die API liefert die fertige Rechte-Liste; hier wird nur nachgeschlagen, nichts ausgewertet.
-  const visiblePortals = portals.filter((p) => !p.requires || (me?.permissions ?? []).includes(p.requires));
+  const visiblePortals = portals.filter((p) => !p.requires || hasPermission(me, p.requires));
   const portal = visiblePortals.find((p) => p.id === active) ?? visiblePortals[0];
 
   return (
@@ -66,7 +67,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
       {portal.id === 'account' ? (
         <AccountPage me={me} error={meError} />
       ) : portal.id === 'accounts' ? (
-        <AccountsPage apiClient={apiClient} canInvite={(me?.permissions ?? []).includes('accounts.invite')} />
+        <AccountsPage apiClient={apiClient} canInvite={hasPermission(me, 'accounts.invite')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>

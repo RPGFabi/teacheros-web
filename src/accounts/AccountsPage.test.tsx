@@ -114,6 +114,9 @@ describe('Konten: Einladen', () => {
     ['identifier_required', 400, 'Bitte geben Sie eine E-Mail-Adresse oder einen Anmeldenamen an'],
     ['invalid_email', 400, 'Die E-Mail-Adresse ist ungültig'],
     ['invalid_username', 400, 'Der Anmeldename ist ungültig'],
+    ['username_login_disabled', 400, 'Konten ohne E-Mail-Adresse'],
+    ['account_disabled', 409, 'Dieses Konto ist gesperrt'],
+    ['invalid_request', 400, 'Die Anfrage wurde abgelehnt'],
     ['auth_unavailable', 502, 'Der Anmeldedienst ist gerade nicht erreichbar']
   ])('uebersetzt den Code %s in einen verstaendlichen Text', async (code, status, text) => {
     const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status, data: { error: 'x', code } } });
@@ -188,6 +191,43 @@ describe('Konten: Einladung per Anmeldename mit Einladungskarte', () => {
     expect(screen.getByText(/nur jetzt angezeigt/)).toBeInTheDocument();
   });
 
+  it('zeigt auf der Karte, bis wann die Einladung gilt', async () => {
+    const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: PUPIL, invite_code: CODE, invite_expires_at: '2026-11-20T12:34:56Z' } } });
+
+    await invitePupil(client);
+
+    const card = await screen.findByRole('article');
+    expect(within(card).getByText('gültig bis 20.11.2026')).toBeInTheDocument();
+  });
+
+  it('laesst "gültig bis" weg, wenn die API kein Ablaufdatum nennt', async () => {
+    const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: PUPIL, invite_code: CODE, invite_expires_at: null } } });
+
+    await invitePupil(client);
+
+    expect(within(await screen.findByRole('article')).queryByText(/gültig bis/)).not.toBeInTheDocument();
+  });
+
+  it('Erneut einladen zeigt das neue Ablaufdatum auf der Karte', async () => {
+    const { client } = fakeClient({
+      ...list(PUPIL),
+      [`POST /api/accounts/${PUPIL.id}/reinvite`]: { data: { account: PUPIL, invite_code: 'WXYZ-2345-6789-ABCD', invite_expires_at: '2026-11-21T08:00:00Z' } }
+    });
+    renderPage(client);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Erneut einladen: schueler.eins' }));
+
+    expect(within(await screen.findByRole('article')).getByText('gültig bis 21.11.2026')).toBeInTheDocument();
+  });
+
+  it('nennt in der Erfolgsmeldung den Anmeldenamen, wenn es weder Code noch E-Mail gibt', async () => {
+    const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status: 201, data: { account: PUPIL, invite_code: null } } });
+
+    await invitePupil(client);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Einladung an schueler.eins gesendet.');
+  });
+
   it('zeigt den Code genau einmal: nach Schliessen ist er weg und kommt nicht wieder', async () => {
     let accounts = [ADMIN];
     const { client } = fakeClient({
@@ -225,7 +265,7 @@ describe('Konten: Einladung per Anmeldename mit Einladungskarte', () => {
     await userEvent.type(screen.getByLabelText('E-Mail (optional)'), 'neu@schule.test');
     await userEvent.click(screen.getByRole('button', { name: 'Einladen' }));
 
-    await screen.findByRole('status');
+    expect(await screen.findByRole('status')).toHaveTextContent('Einladung an neu@schule.test gesendet.');
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 

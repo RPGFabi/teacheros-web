@@ -73,7 +73,7 @@ describe('Anmeldung und Mein Konto', () => {
 
     await fillLogin('lehrer@example.test', 'falsch');
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Anmeldung fehlgeschlagen');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Anmeldung fehlgeschlagen. Bitte E-Mail bzw. Anmeldename und Passwort prüfen.');
     expect(screen.getByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
   });
 

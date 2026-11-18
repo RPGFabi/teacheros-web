@@ -39,7 +39,7 @@ describe('Einladung annehmen', () => {
 
   it('zeigt die Passwortregel des Anmeldedienstes und laesst den Link weiter nutzbar', async () => {
     const rule = 'Das Passwort erfüllt nicht alle Anforderungen: Es muss mindestens ein Sonderzeichen enthalten.';
-    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: rule } } });
+    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: rule, code: 'weak_password' } } });
     const onAccepted = vi.fn();
     render(<InvitationPage authClient={client} token="abc123" onAccepted={onAccepted} />);
 
@@ -51,13 +51,31 @@ describe('Einladung annehmen', () => {
   });
 
   it('erklaert bei abgelaufenem oder schon benutztem Link, dass eine neue Einladung noetig ist', async () => {
-    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: 'Der Link ist ungültig oder abgelaufen.' } } });
+    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: 'Der Link ist ungültig oder abgelaufen.', code: 'invalid_invite' } } });
     render(<InvitationPage authClient={client} token="abc123" onAccepted={() => {}} />);
 
     await fillAndSubmit();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('abgelaufen oder wurde schon benutzt');
     expect(screen.getByRole('alert')).toHaveTextContent('neue Einladung');
+  });
+
+  it('wertet den Code der Antwort aus, nicht den Meldungstext', async () => {
+    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: 'Irgendein anderer Text.', code: 'weak_password' } } });
+    render(<InvitationPage authClient={client} token="abc123" onAccepted={() => {}} />);
+
+    await fillAndSubmit('Schwach1234');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Irgendein anderer Text.');
+  });
+
+  it('behandelt jede andere 400 als unbrauchbaren Link oder Code, auch wenn der Text nach Passwort klingt', async () => {
+    const { client } = fakeClient({ 'POST /acceptInvite': { status: 400, data: { error: 'Das Passwort ist doch egal.', code: 'invalid_invite' } } });
+    render(<InvitationPage authClient={client} code="ABCD-EFGH-JKMN-PQRS" onAccepted={() => {}} />);
+
+    await fillAndSubmit();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Der Einladungscode ist ungültig');
   });
 
   it('meldet einen Ausfall des Anmeldedienstes verstaendlich', async () => {
