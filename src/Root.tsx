@@ -1,15 +1,28 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from '@hoelzle/react-auth';
 import type { AxiosInstance } from 'axios';
 import App from './App';
 import LoginPage from './auth/LoginPage';
+import { lockNotice } from './auth/lockNotice';
+import { useSessionEndGuard } from './auth/useSessionEndGuard';
 import InvitationPage from './invitation/InvitationPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/client';
 
 function Gate({ apiClient, notice }: { apiClient: AxiosInstance; notice?: string }) {
-  const { isAuthReady, isAuthenticated } = useAuth();
+  const { isAuthReady, isAuthenticated, logout } = useAuth();
+  // Hinweis, warum die laufende Sitzung beendet wurde (nur bei Sperre; bei widerrufener Sitzung keiner).
+  const [sessionNotice, setSessionNotice] = useState<string | undefined>();
+  useSessionEndGuard(apiClient, (end) => {
+    setSessionNotice(end.kind === 'account_inactive' ? lockNotice(end.reason) : undefined);
+    void logout();
+  });
+  // Wer sich wieder angemeldet hat, soll den alten Hinweis nicht bei der naechsten Abmeldung sehen.
+  useEffect(() => {
+    if (isAuthenticated) setSessionNotice(undefined);
+  }, [isAuthenticated]);
+
   if (!isAuthReady) return <p className="content">Wird geladen …</p>;
-  if (!isAuthenticated) return <LoginPage notice={notice} />;
+  if (!isAuthenticated) return <LoginPage notice={sessionNotice ?? notice} />;
   return <App apiClient={apiClient} initialPortal="account" />;
 }
 
