@@ -3,6 +3,7 @@ import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { statusLabel } from '../account/status';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
+import AccountDetail from './AccountDetail';
 
 export interface AccountRow {
   id: string;
@@ -17,6 +18,10 @@ interface Props {
   apiClient: AxiosInstance;
   /** Recht `accounts.invite` aus GET /api/me; ohne es gibt es keine Einladen-Schaltflaechen. */
   canInvite: boolean;
+  /** Eines der drei Verwaltungsrechte aus GET /api/me: ohne es gibt es keine Detailansicht (die API verweigert sie). */
+  canViewAccess?: boolean;
+  /** Recht `roles.assign` aus GET /api/me; ohne es sind Vergeben und Entziehen in der Detailansicht gesperrt. */
+  canAssignRoles?: boolean;
   /** Schulname auf der Einladungskarte; Standard `VITE_APP_NAME`. */
   schoolName?: string;
   /** Web-Origin fuer den QR-Link der Einladungskarte; Standard `window.location.origin`. */
@@ -65,11 +70,14 @@ function formatDate(iso: string | null): string {
 export default function AccountsPage({
   apiClient,
   canInvite,
+  canViewAccess = false,
+  canAssignRoles = false,
   schoolName = import.meta.env.VITE_APP_NAME || 'Schulplattform',
   origin = window.location.origin
 }: Props) {
   const [accounts, setAccounts] = useState<AccountRow[] | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [loginName, setLoginName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -133,6 +141,10 @@ export default function AccountsPage({
       return `Erneut eingeladen: ${account.email ?? account.login_name}. Die vorige Einladung ist ungültig.`;
     });
 
+  if (detailId !== null) {
+    return <AccountDetail apiClient={apiClient} accountId={detailId} canAssign={canAssignRoles} onBack={() => setDetailId(null)} />;
+  }
+
   return (
     <main className="content">
       <h1>Konten</h1>
@@ -188,7 +200,7 @@ export default function AccountsPage({
                 <th scope="col">Anmeldename</th>
                 <th scope="col">Status</th>
                 <th scope="col">Eingeladen am</th>
-                {canInvite && <th scope="col">Aktion</th>}
+                {(canInvite || canViewAccess) && <th scope="col">Aktion</th>}
               </tr>
             </thead>
             <tbody>
@@ -198,9 +210,18 @@ export default function AccountsPage({
                   <td>{account.login_name}</td>
                   <td>{statusLabel(account.status)}</td>
                   <td>{formatDate(account.invited_at)}</td>
-                  {canInvite && (
+                  {(canInvite || canViewAccess) && (
                     <td>
-                      {account.status === 'invited' && (
+                      {canViewAccess && (
+                        <Button
+                          variant="secondary"
+                          aria-label={`Rollen und Rechte: ${account.email ?? account.login_name}`}
+                          onClick={() => setDetailId(account.id)}
+                        >
+                          Rollen und Rechte
+                        </Button>
+                      )}{' '}
+                      {canInvite && account.status === 'invited' && (
                         <Button
                           variant="secondary"
                           disabled={busy}
