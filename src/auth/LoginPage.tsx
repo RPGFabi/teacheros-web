@@ -6,7 +6,7 @@ interface Challenge {
   token: string;
 }
 
-export default function LoginPage() {
+export default function LoginPage({ notice }: { notice?: string }) {
   const { login, verifyMfaChallenge } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +34,7 @@ export default function LoginPage() {
       if (result.status === 'mfa_required') {
         setChallenge({ token: result.challengeToken });
       }
-    }, 'Anmeldung fehlgeschlagen. Bitte E-Mail und Passwort prüfen.');
+    }, 'Anmeldung fehlgeschlagen. Bitte E-Mail bzw. Anmeldename und Passwort prüfen.');
   };
 
   const submitCode = (event: FormEvent) => {
@@ -46,6 +46,7 @@ export default function LoginPage() {
   return (
     <main className="content login">
       <h1>Anmelden</h1>
+      {notice && <p role="status">{notice}</p>}
       <Card>
         {challenge ? (
           <form onSubmit={submitCode}>
@@ -58,8 +59,8 @@ export default function LoginPage() {
           </form>
         ) : (
           <form onSubmit={submitLogin}>
-            <FormField label="E-Mail" htmlFor="login-email">
-              <TextInput id="login-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <FormField label="E-Mail oder Anmeldename" htmlFor="login-email">
+              <TextInput id="login-email" type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
             </FormField>
             <FormField label="Passwort" htmlFor="login-password">
               <TextInput id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />

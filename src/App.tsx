@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
-import AccountPage from './account/AccountPage';
+import AccountPage, { type Me } from './account/AccountPage';
+import { hasPermission } from './account/permissions';
+import AccountsPage from './accounts/AccountsPage';
 import { apiClient as defaultApiClient } from './api/client';
 
 
@@ -10,7 +12,27 @@ import { apiClient as defaultApiClient } from './api/client';
 export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
   const [active, setActive] = useState<PortalId>(initialPortal);
   const [menuOpen, setMenuOpen] = useState(false);
-  const portal = portals.find((p) => p.id === active)!;
+  const [me, setMe] = useState<Me | null>(null);
+  const [meError, setMeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<Me>('/api/me')
+      .then((response) => !cancelled && setMe(response.data))
+      .catch((err) => {
+        if (cancelled) return;
+        const code = err?.response?.data?.code;
+        setMeError(code === 'account_inactive' ? 'Ihr Konto ist nicht aktiv. Bitte wenden Sie sich an die Schuladministration.' : 'Die Kontodaten konnten nicht geladen werden.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient]);
+
+  // Die API liefert die fertige Rechte-Liste; hier wird nur nachgeschlagen, nichts ausgewertet.
+  const visiblePortals = portals.filter((p) => !p.requires || hasPermission(me, p.requires));
+  const portal = visiblePortals.find((p) => p.id === active) ?? visiblePortals[0];
 
   return (
     <div className="app-shell">
@@ -27,11 +49,11 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         </Button>
       </header>
       <nav id="main-nav" aria-label="Hauptnavigation" className={menuOpen ? 'nav nav-open' : 'nav'}>
-        {portals.map((p) => (
+        {visiblePortals.map((p) => (
           <a
             key={p.id}
             href={p.path}
-            aria-current={p.id === active ? 'page' : undefined}
+            aria-current={p.id === portal.id ? 'page' : undefined}
             onClick={(event) => {
               event.preventDefault();
               setActive(p.id);
@@ -42,8 +64,10 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
           </a>
         ))}
       </nav>
-      {active === 'account' ? (
-        <AccountPage apiClient={apiClient} />
+      {portal.id === 'account' ? (
+        <AccountPage me={me} error={meError} />
+      ) : portal.id === 'accounts' ? (
+        <AccountsPage apiClient={apiClient} canInvite={hasPermission(me, 'accounts.invite')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
