@@ -102,3 +102,33 @@ describe('Seite Konten in der App-Schale', () => {
     expect(screen.queryByRole('button', { name: /Erneut einladen/ })).not.toBeInTheDocument();
   });
 });
+
+describe('Menuepunkt Rollen (eines der drei Verwaltungsrechte)', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+
+  it.each(['roles.manage', 'roles.assign', 'permissions.assign'])('zeigt Rollen mit %s und oeffnet die Seite', async (permission) => {
+    const { client } = fakeClient({
+      'GET /api/me': { data: ME([permission]) },
+      'GET /api/roles': { data: { roles: [] } },
+      'GET /api/permissions': { data: { permissions: [] } }
+    });
+    render(<App apiClient={client} />);
+
+    const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    await userEvent.click(await within(nav).findByRole('link', { name: 'Rollen' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Rollen' })).toBeInTheDocument();
+  });
+
+  it('blendet Rollen ohne eines der drei Rechte aus, auch mit accounts.view', async () => {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(['accounts.view', 'accounts.invite']) } });
+    render(<App apiClient={client} />);
+
+    await screen.findByRole('link', { name: 'Konten' });
+    expect(screen.queryByRole('link', { name: 'Rollen' })).not.toBeInTheDocument();
+  });
+});

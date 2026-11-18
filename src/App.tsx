@@ -5,6 +5,7 @@ import { portals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
 import { hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
+import RolesPage from './roles/RolesPage';
 import { apiClient as defaultApiClient } from './api/client';
 
 
@@ -31,7 +32,9 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
   }, [apiClient]);
 
   // Die API liefert die fertige Rechte-Liste; hier wird nur nachgeschlagen, nichts ausgewertet.
-  const visiblePortals = portals.filter((p) => !p.requires || hasPermission(me, p.requires));
+  const visiblePortals = portals.filter(
+    (p) => (!p.requires || hasPermission(me, p.requires)) && (!p.requiresAny || p.requiresAny.some((permission) => hasPermission(me, permission)))
+  );
   const portal = visiblePortals.find((p) => p.id === active) ?? visiblePortals[0];
 
   return (
@@ -68,6 +71,8 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         <AccountPage me={me} error={meError} />
       ) : portal.id === 'accounts' ? (
         <AccountsPage apiClient={apiClient} canInvite={hasPermission(me, 'accounts.invite')} />
+      ) : portal.id === 'roles' ? (
+        <RolesPage apiClient={apiClient} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
