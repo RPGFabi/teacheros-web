@@ -22,6 +22,8 @@ interface Props {
   canViewAccess?: boolean;
   /** Recht `roles.assign` aus GET /api/me; ohne es sind Vergeben und Entziehen in der Detailansicht gesperrt. */
   canAssignRoles?: boolean;
+  /** Recht `permissions.assign` aus GET /api/me; ohne es sind Einzelrechte in der Detailansicht gesperrt. */
+  canAssignPermissions?: boolean;
   /** Schulname auf der Einladungskarte; Standard `VITE_APP_NAME`. */
   schoolName?: string;
   /** Web-Origin fuer den QR-Link der Einladungskarte; Standard `window.location.origin`. */
@@ -72,6 +74,7 @@ export default function AccountsPage({
   canInvite,
   canViewAccess = false,
   canAssignRoles = false,
+  canAssignPermissions = false,
   schoolName = import.meta.env.VITE_APP_NAME || 'Schulplattform',
   origin = window.location.origin
 }: Props) {
@@ -142,7 +145,7 @@ export default function AccountsPage({
     });
 
   if (detailId !== null) {
-    return <AccountDetail apiClient={apiClient} accountId={detailId} canAssign={canAssignRoles} onBack={() => setDetailId(null)} />;
+    return <AccountDetail apiClient={apiClient} accountId={detailId} canAssign={canAssignRoles} canAssignPermissions={canAssignPermissions} onBack={() => setDetailId(null)} />;
   }
 
   return (
