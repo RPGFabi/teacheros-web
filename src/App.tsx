@@ -72,7 +72,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
       ) : portal.id === 'accounts' ? (
         <AccountsPage apiClient={apiClient} canInvite={hasPermission(me, 'accounts.invite')} />
       ) : portal.id === 'roles' ? (
-        <RolesPage apiClient={apiClient} />
+        <RolesPage apiClient={apiClient} canManage={hasPermission(me, 'roles.manage')} heldPermissions={me?.permissions ?? []} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>

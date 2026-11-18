@@ -124,6 +124,27 @@ describe('Menuepunkt Rollen (eines der drei Verwaltungsrechte)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Rollen' })).toBeInTheDocument();
   });
 
+  it.each([
+    ['roles.manage', true],
+    ['roles.assign', false]
+  ])('Rolle anlegen ist mit %s aktiviert: %s', async (permission, enabled) => {
+    const { client } = fakeClient({
+      'GET /api/me': { data: ME([permission]) },
+      'GET /api/roles': { data: { roles: [] } },
+      'GET /api/permissions': { data: { permissions: [] } }
+    });
+    render(<App apiClient={client} />);
+
+    await userEvent.click(await within(screen.getByRole('navigation', { name: 'Hauptnavigation' })).findByRole('link', { name: 'Rollen' }));
+
+    const button = screen.getByRole('button', { name: 'Rolle anlegen' });
+    if (enabled) {
+      expect(button).toBeEnabled();
+    } else {
+      expect(button).toBeDisabled();
+    }
+  });
+
   it('blendet Rollen ohne eines der drei Rechte aus, auch mit accounts.view', async () => {
     const { client } = fakeClient({ 'GET /api/me': { data: ME(['accounts.view', 'accounts.invite']) } });
     render(<App apiClient={client} />);

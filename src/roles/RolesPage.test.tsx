@@ -84,11 +84,13 @@ describe('Rollen: Liste', () => {
     expect(within(await rowOf('Vertretungsplan')).getByText('Eigene Rolle')).toBeInTheDocument();
   });
 
-  it('ist nur lesend: keine Schaltflaechen und keine Formularfelder', async () => {
+  it('ohne Recht „Rollen verwalten“ (Standard) sind alle Schreibaktionen deaktiviert und es gibt kein Formular', async () => {
     render(<RolesPage apiClient={fakeClient(routes).client} />);
 
     await rowOf('Schuladmin');
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toBeDisabled();
+    }
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
