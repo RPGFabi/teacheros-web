@@ -8,6 +8,9 @@ import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import { apiClient as defaultApiClient } from './api/client';
 
+/** Die drei Verwaltungsrechte: mit einem davon sind Rollen und Zuweisungen lesbar. */
+const ADMINISTRATION = ['roles.manage', 'roles.assign', 'permissions.assign'];
+
 
 
 export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
@@ -70,7 +73,12 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
       {portal.id === 'account' ? (
         <AccountPage me={me} error={meError} />
       ) : portal.id === 'accounts' ? (
-        <AccountsPage apiClient={apiClient} canInvite={hasPermission(me, 'accounts.invite')} />
+        <AccountsPage
+          apiClient={apiClient}
+          canInvite={hasPermission(me, 'accounts.invite')}
+          canViewAccess={ADMINISTRATION.some((permission) => hasPermission(me, permission))}
+          canAssignRoles={hasPermission(me, 'roles.assign')}
+        />
       ) : portal.id === 'roles' ? (
         <RolesPage apiClient={apiClient} canManage={hasPermission(me, 'roles.manage')} heldPermissions={me?.permissions ?? []} />
       ) : (
