@@ -19,6 +19,7 @@ const ERROR_TEXT: Record<string, string> = {
   permission_not_held: 'Sie besitzen nicht alle Rechte dieser Rolle und dürfen sie deshalb weder vergeben noch entziehen.',
   student_role_exclusive: 'Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte.',
   admin_overrides_forbidden: 'Konten mit Einzelrechten können nicht Schuladmin werden. Setzen Sie die Einzelrechte zuerst zurück.',
+  last_admin: 'Das ist der letzte aktive Schuladmin. Ernennen Sie zuerst einen weiteren Schuladmin, der sich schon angemeldet hat.',
   role_not_found: 'Diese Rolle gibt es nicht mehr.',
   account_not_found: 'Dieses Konto gibt es nicht mehr.',
   forbidden: 'Dafür fehlt Ihnen die Berechtigung.'
@@ -35,7 +36,7 @@ function describeFailure(err: unknown): string {
  * Detailansicht eines Kontos (Ticket #34): Rollen einzeln hinzufuegen und entziehen, effektive Rechte mit Herkunft.
  * Welche Aktion erlaubt ist, entscheidet die API (`role_actions`); nicht erlaubte Aktionen bleiben sichtbar und
  * deaktiviert, mit Begruendung. Jede Antwort der API ist die neue Sicht; nach einem Fehler wird sie neu geladen.
- * Andockpunkte: #35 (Sperre beim Entziehen) kommt als weiterer `code` in `role_actions`, #36 (Einzelrechte) ueber
+ * Andockpunkte: #35 (letzter Admin, `last_admin`) kommt als `code` in `role_actions`, #36 (Einzelrechte) ueber
  * `renderActions` von {@link EffectivePermissions} und einen eigenen Abschnitt unter den Rechten.
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, onBack }: Props) {
