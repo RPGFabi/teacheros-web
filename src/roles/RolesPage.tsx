@@ -74,7 +74,7 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
     run(
       async () => {
         if (role) {
-          await apiClient.patch(`/api/roles/${role.id}`, payload);
+          await apiClient.post(`/api/roles/${role.id}/update`, payload);
           return `Rolle „${payload.name}“ gespeichert.`;
         }
         await apiClient.post('/api/roles', payload);
@@ -88,7 +88,7 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
     setDeleting(null);
     return run(
       async () => {
-        await apiClient.delete(`/api/roles/${role.id}`);
+        await apiClient.post(`/api/roles/${role.id}/delete`);
         return `Rolle „${role.name}“ gelöscht.`;
       },
       'Die Rolle konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.',

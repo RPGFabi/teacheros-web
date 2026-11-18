@@ -43,15 +43,15 @@ function setup(extra: Record<string, Parameters<typeof fakeClient>[0][string]> =
       roles = [...roles, created];
       return { status: 201, data: { role: created } };
     },
-    'PATCH /api/roles/r-r_ab12': (call: FakeCall) => {
+    'POST /api/roles/r-r_ab12/update': (call: FakeCall) => {
       roles = roles.map((r) => (r.id === 'r-r_ab12' ? { ...r, ...(call.data as object) } : r));
       return { data: { role: roles.find((r) => r.id === 'r-r_ab12') } };
     },
-    'PATCH /api/roles/r-lehrkraft': (call: FakeCall) => {
+    'POST /api/roles/r-lehrkraft/update': (call: FakeCall) => {
       roles = roles.map((r) => (r.id === 'r-lehrkraft' ? { ...r, ...(call.data as object) } : r));
       return { data: { role: roles.find((r) => r.id === 'r-lehrkraft') } };
     },
-    'DELETE /api/roles/r-r_ab12': () => {
+    'POST /api/roles/r-r_ab12/delete': () => {
       roles = roles.filter((r) => r.id !== 'r-r_ab12');
       return { data: { deleted: true } };
     },
@@ -148,7 +148,7 @@ describe('Rollen: anlegen', () => {
 });
 
 describe('Rollen: bearbeiten', () => {
-  it('fuellt das Formular mit der Rolle vor und speichert die Aenderungen per PATCH', async () => {
+  it('fuellt das Formular mit der Rolle vor und speichert die Aenderungen per POST', async () => {
     const { writes } = setup();
     await rowOf('Vertretungsplan');
 
@@ -170,8 +170,8 @@ describe('Rollen: bearbeiten', () => {
 
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0]).toMatchObject({
-      method: 'PATCH',
-      url: '/api/roles/r-r_ab12',
+      method: 'POST',
+      url: '/api/roles/r-r_ab12/update',
       data: { name: 'Vertretung', description: 'Eigene Rolle.', permissions: ['accounts.view', 'accounts.invite'], requires_mfa: false }
     });
     expect(await screen.findByRole('status')).toHaveTextContent('Rolle „Vertretung“ gespeichert.');
@@ -219,7 +219,7 @@ describe('Rollen: bearbeiten', () => {
   });
 
   it('zeigt „Eigene Rolle nicht erweiterbar“ bei self_escalation', async () => {
-    setup({ 'PATCH /api/roles/r-r_ab12': { status: 403, data: { error: 'x', code: 'self_escalation' } } });
+    setup({ 'POST /api/roles/r-r_ab12/update': { status: 403, data: { error: 'x', code: 'self_escalation' } } });
     await rowOf('Vertretungsplan');
     await userEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Vertretungsplan' }));
 
@@ -241,7 +241,7 @@ describe('Rollen: loeschen', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }));
 
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]).toMatchObject({ method: 'DELETE', url: '/api/roles/r-r_ab12' });
+    expect(writes()[0]).toMatchObject({ method: 'POST', url: '/api/roles/r-r_ab12/delete' });
     expect(await screen.findByRole('status')).toHaveTextContent('Rolle „Vertretungsplan“ gelöscht.');
     await waitFor(() => expect(screen.queryByRole('rowheader', { name: /Vertretungsplan/ })).not.toBeInTheDocument());
   });
@@ -279,7 +279,7 @@ describe('Rollen: loeschen', () => {
   });
 
   it('zeigt role_in_use der API verstaendlich, wenn die Rolle inzwischen vergeben wurde', async () => {
-    setup({ 'DELETE /api/roles/r-r_ab12': { status: 409, data: { error: 'x', code: 'role_in_use' } } });
+    setup({ 'POST /api/roles/r-r_ab12/delete': { status: 409, data: { error: 'x', code: 'role_in_use' } } });
     await rowOf('Vertretungsplan');
     await userEvent.click(screen.getByRole('button', { name: 'Löschen: Vertretungsplan' }));
 
