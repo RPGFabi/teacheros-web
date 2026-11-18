@@ -387,3 +387,105 @@ describe('Kontodetail: Konto deaktivieren (Ticket #41)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Das Konto konnte nicht deaktiviert werden');
   });
 });
+
+describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
+  const DEACTIVATE = `POST /api/accounts/${ID}/deactivate`;
+  const RESYNC = `POST /api/accounts/${ID}/resync-login`;
+  const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
+  const PENDING: AccountAccess = {
+    ...ACCESS,
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: true },
+    account_actions: [BLOCKED_DEACTIVATE, { action: 'resync_login', allowed: true, code: null, reason: null }]
+  };
+  const SYNCED: AccountAccess = { ...PENDING, account: { ...PENDING.account, login_sync_pending: false }, account_actions: [BLOCKED_DEACTIVATE] };
+
+  it('zeigt den Hinweis „Abgleich mit dem Anmeldedienst offen“ und den Knopf „Abgleich wiederholen“', async () => {
+    mount({ [path]: { data: PENDING } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(within(section).getByText(/Abgleich mit dem Anmeldedienst offen/)).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('zeigt weder Hinweis noch Knopf, wenn kein Abgleich offen ist', async () => {
+    mount({ [path]: { data: SYNCED } });
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByText(/Abgleich mit dem Anmeldedienst offen/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abgleich wiederholen' })).not.toBeInTheDocument();
+  });
+
+  it('wiederholt den Abgleich und zeigt danach die Sicht der API ohne Markierung', async () => {
+    const { calls } = mount({ [path]: { data: PENDING }, [RESYNC]: { data: SYNCED } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Abgleich wiederholen' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Abgleich mit dem Anmeldedienst nachgeholt');
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/resync-login`]);
+    expect(screen.queryByText(/Abgleich mit dem Anmeldedienst offen/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abgleich wiederholen' })).not.toBeInTheDocument();
+  });
+
+  it('meldet einen nicht erreichbaren Anmeldedienst (502) und laesst die Markierung stehen', async () => {
+    mount({ [path]: { data: PENDING }, [RESYNC]: { status: 502, data: { error: 'x', code: 'auth_unavailable' } } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Abgleich wiederholen' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Der Anmeldedienst ist gerade nicht erreichbar. Der Abgleich bleibt offen');
+    expect(screen.getByText(/Abgleich mit dem Anmeldedienst offen/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('uebersetzt eine fachliche Ablehnung und sonstige Fehler', async () => {
+    mount({ [path]: { data: PENDING }, [RESYNC]: { status: 409, data: { error: 'x', code: 'sync_not_pending' } } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Abgleich wiederholen' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Es ist kein Abgleich mehr offen');
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [path]: { data: PENDING }, [RESYNC]: { status: 500 } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Abgleich wiederholen' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Der Abgleich konnte nicht wiederholt werden');
+  });
+
+  it('laesst den Knopf ohne Recht sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
+    const reason = 'Dafür fehlt Ihnen das Recht, Konten zu deaktivieren.';
+    mount({ [path]: { data: { ...PENDING, account_actions: [BLOCKED_DEACTIVATE, { action: 'resync_login', allowed: false, code: 'forbidden', reason }] } } });
+
+    const button = await screen.findByRole('button', { name: 'Abgleich wiederholen' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+  });
+
+  it('nennt nach der Deaktivierung, dass der Abgleich noch offen ist', async () => {
+    mount({ [DEACTIVATE]: { data: PENDING } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deaktivieren' }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Konto deaktiviert');
+    expect(status).toHaveTextContent('Abgleich mit dem Anmeldedienst ist noch offen');
+    expect(screen.getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('nennt nach der Deaktivierung ohne Ausfall nur „Konto deaktiviert.“', async () => {
+    mount({ [DEACTIVATE]: { data: SYNCED } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deaktivieren' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^Konto deaktiviert\.$/);
+  });
+
+  it('kennzeichnet den Abgleich auch in der Statuszeile', async () => {
+    mount({ [path]: { data: PENDING } });
+
+    expect(await screen.findByText(/Deaktiviert seit 18\.11\.2026 \(Abgleich offen\)/)).toBeInTheDocument();
+  });
+});

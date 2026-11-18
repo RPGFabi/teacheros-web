@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { errorCode } from '../api/errors';
-import { statusLabel } from '../account/status';
+import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
 import type { AccountAccess, PermissionAction, RoleAction } from './access';
 import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
 
@@ -36,9 +36,18 @@ const DEACTIVATE_ERROR_TEXT: Record<string, string> = {
   permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.'
 };
 
+/** Fehlertexte beim Wiederholen des Abgleichs (Ticket #42). */
+const RESYNC_ERROR_TEXT: Record<string, string> = {
+  auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Der Abgleich bleibt offen; bitte versuchen Sie es später noch einmal.',
+  sync_not_pending: 'Es ist kein Abgleich mehr offen.',
+  user_not_found: 'Der Anmeldedienst kennt dieses Konto nicht. Der Abgleich bleibt offen.'
+};
+
+const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
 const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
+const RESYNC_FAILED = 'Der Abgleich konnte nicht wiederholt werden. Bitte versuchen Sie es erneut.';
 const DEACTIVATE_FAILED = 'Das Konto konnte nicht deaktiviert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
@@ -61,6 +70,8 @@ function describeFailure(err: unknown, overrides: Record<string, string> = {}, f
  * `last_admin`) kommt als gesperrte Aktion mit Begruendung in `role_actions`.
  * Konto deaktivieren (Ticket #41): „Deaktivieren …“ mit Bestaetigungsdialog; ob die Aktion erlaubt ist, sagt die API in
  * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
+ * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Sperre dort noch nicht gemeldet (`login_sync_pending`), steht im
+ * Abschnitt „Konto“ ein Hinweis und „Abgleich wiederholen“ (Aktion `resync_login`, gesperrt sichtbar ohne Recht).
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, canAssignPermissions = false, onBack }: Props) {
   const [access, setAccess] = useState<AccountAccess | null>(null);
@@ -124,10 +135,26 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     setNotice(null);
     setError(null);
     try {
-      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/deactivate`)).data);
-      setNotice('Konto deaktiviert.');
+      const { data } = await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/deactivate`);
+      setAccess(data);
+      setNotice(data.account.login_sync_pending ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.');
     } catch (err) {
       setError(describeFailure(err, DEACTIVATE_ERROR_TEXT, DEACTIVATE_FAILED));
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resync() {
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/resync-login`)).data);
+      setNotice('Abgleich mit dem Anmeldedienst nachgeholt.');
+    } catch (err) {
+      setError(describeFailure(err, RESYNC_ERROR_TEXT, RESYNC_FAILED));
       await load();
     } finally {
       setBusy(false);
@@ -183,6 +210,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
 
   const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
   const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const resyncAction = access.account.login_sync_pending ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
+  const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const accountName = access.account.email ?? access.account.login_name;
 
   const permissionRow = (item: PermissionAction) => {
@@ -221,7 +250,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <p>{back}</p>
       <h1>{access.account.email ?? access.account.login_name}</h1>
       <p>
-        Anmeldename {access.account.login_name} · {statusLabel(access.account.status, access.account.inactive_since)} · Erfordert MFA:{' '}
+        Anmeldename {access.account.login_name} · {statusLabel(access.account.status, access.account.inactive_since)}
+        {access.account.login_sync_pending ? ` (${SYNC_PENDING_LABEL})` : ''} · Erfordert MFA:{' '}
         {access.account.mfa_required ? 'Ja' : 'Nein'}
       </p>
       {notice && <p role="status">{notice}</p>}
@@ -242,6 +272,27 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
             <small id="deactivate-hint" style={{ display: 'block' }}>
               {deactivationBlocked}
             </small>
+          )}
+          {resyncAction && (
+            <>
+              <h3>Abgleich mit dem Anmeldedienst offen</h3>
+              <p>
+                Das Konto ist hier gesperrt und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Sperre aber noch nicht gemeldet, bis der Abgleich gelingt.
+              </p>
+              <Button
+                variant="secondary"
+                disabled={busy || resyncBlocked !== null}
+                aria-describedby={resyncBlocked ? 'resync-hint' : undefined}
+                onClick={() => void resync()}
+              >
+                Abgleich wiederholen
+              </Button>
+              {resyncBlocked && (
+                <small id="resync-hint" style={{ display: 'block' }}>
+                  {resyncBlocked}
+                </small>
+              )}
+            </>
           )}
         </section>
       </Card>

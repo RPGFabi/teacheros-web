@@ -41,9 +41,12 @@ export interface PermissionAction {
   reason: string | null;
 }
 
-/** Eine Aktion am Konto selbst (Ticket #41: `deactivate`); gesperrt mit Code und deutscher Begruendung. */
+/**
+ * Eine Aktion am Konto selbst (Ticket #41: `deactivate`; Ticket #42: `resync_login` = „Abgleich wiederholen“, nur solange
+ * der Abgleich offen ist); gesperrt mit Code und deutscher Begruendung.
+ */
 export interface AccountAction {
-  action: 'deactivate';
+  action: 'deactivate' | 'resync_login';
   allowed: boolean;
   code: string | null;
   reason: string | null;
@@ -63,6 +66,8 @@ export interface AccountAccess {
     inactive_since: string | null;
     /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
     inactive_reason: string | null;
+    /** „Abgleich offen“: die Sperre ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). Fehlt ohne `accounts.view`. */
+    login_sync_pending?: boolean;
     mfa_required: boolean;
   };
   roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];

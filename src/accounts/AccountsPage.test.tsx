@@ -25,6 +25,18 @@ describe('Konten: Liste', () => {
     expect(screen.getByText('Deaktiviert seit 17.11.2026')).toBeInTheDocument();
   });
 
+  it('kennzeichnet ein deaktiviertes Konto mit offenem Abgleich in der Liste (Ticket #42)', async () => {
+    const { client } = fakeClient(list(ADMIN, { ...INACTIVE, login_sync_pending: true }, { ...INACTIVE, id: 'x', login_name: 'abgeglichen', login_sync_pending: false }));
+    render(<AccountsPage apiClient={client} canInvite />);
+
+    const pending = (await screen.findByText('sperre', { selector: 'td' })).closest('tr')!;
+    expect(within(pending).getByText('Abgleich offen')).toBeInTheDocument();
+    expect(within(pending).getByText(/Deaktiviert seit 17\.11\.2026/)).toBeInTheDocument();
+    const synced = screen.getByText('abgeglichen', { selector: 'td' }).closest('tr')!;
+    expect(within(synced).queryByText('Abgleich offen')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Abgleich offen')).toHaveLength(1);
+  });
+
   it('zeigt bei einem Ladefehler eine Meldung und laedt auf Wunsch erneut', async () => {
     let attempts = 0;
     const { client } = fakeClient({
