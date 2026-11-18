@@ -1,17 +1,21 @@
-import type { ReactNode } from 'react';
-import { sourceLabel, type PermissionRow } from './access';
+import { sourceLabel, type PermissionSource, type PermissionRow } from './access';
 
-interface Props {
-  permissions: PermissionRow[];
-  /**
-   * Optional: erzeugt Aktionen je Recht. Die Einzelrechte (Ticket #36) stehen in einem eigenen Abschnitt der Detailansicht.
-   * Ohne Angabe gibt es keine Aktionsspalte.
-   */
-  renderActions?: (permission: PermissionRow) => ReactNode;
+/** Herkunft eines Rechts als Liste (Rolle, Einzelrecht, entzogen); ohne Herkunft steht „Keine“. */
+export function PermissionSources({ sources }: { sources: PermissionSource[] }) {
+  if (sources.length === 0) {
+    return <>Keine</>;
+  }
+  return (
+    <ul>
+      {sources.map((source, index) => (
+        <li key={index}>{sourceLabel(source)}</li>
+      ))}
+    </ul>
+  );
 }
 
 /** Effektive Rechte eines Kontos mit Herkunft (Rolle, Einzelrecht, entzogen), nur lesend. */
-export default function EffectivePermissions({ permissions, renderActions }: Props) {
+export default function EffectivePermissions({ permissions }: { permissions: PermissionRow[] }) {
   if (permissions.length === 0) {
     return <p>Dieses Konto hat keine Rechte.</p>;
   }
@@ -22,7 +26,6 @@ export default function EffectivePermissions({ permissions, renderActions }: Pro
           <th scope="col">Recht</th>
           <th scope="col">Herkunft</th>
           <th scope="col">Wirkung</th>
-          {renderActions && <th scope="col">Aktion</th>}
         </tr>
       </thead>
       <tbody>
@@ -30,14 +33,9 @@ export default function EffectivePermissions({ permissions, renderActions }: Pro
           <tr key={permission.key}>
             <th scope="row">{permission.name}</th>
             <td>
-              <ul>
-                {permission.sources.map((source, index) => (
-                  <li key={index}>{sourceLabel(source)}</li>
-                ))}
-              </ul>
+              <PermissionSources sources={permission.sources} />
             </td>
             <td>{permission.effective ? 'Gilt' : 'Gilt nicht'}</td>
-            {renderActions && <td>{renderActions(permission)}</td>}
           </tr>
         ))}
       </tbody>

@@ -49,6 +49,13 @@ const mount = (routes: Parameters<typeof fakeClient>[0], props: Partial<Paramete
 };
 
 describe('Kontodetail: Lesesicht', () => {
+  it('nennt das MFA-Merkmal einheitlich „Erfordert MFA“', async () => {
+    mount({});
+
+    expect(await screen.findByText(/Erfordert MFA: Ja/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Mehrfaktor');
+  });
+
   it('zeigt Konto, Rollen und effektive Rechte mit Herkunft', async () => {
     mount({});
 
@@ -138,11 +145,11 @@ describe('Kontodetail: Rollen vergeben und entziehen', () => {
   });
 
   it.each([
-    ['self_escalation', 403, 'Sie können sich selbst keine Rolle geben'],
-    ['permission_not_held', 403, 'Sie besitzen nicht alle Rechte dieser Rolle'],
+    ['self_escalation', 403, 'Sie können sich selbst keine Rollen oder Einzelrechte'],
+    ['permission_not_held', 403, 'Sie besitzen nicht alle dafür nötigen Rechte'],
     ['student_role_exclusive', 409, 'Schüler/in'],
     ['admin_overrides_forbidden', 409, 'Einzelrechte'],
-    ['forbidden', 403, 'Dafür fehlt Ihnen die Berechtigung']
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
   ])('uebersetzt den Fehlercode %s in einen Text und laedt die Sicht neu', async (code, status, text) => {
     const { calls } = mount({ [`POST /api/accounts/${ID}/roles`]: { status, data: { error: 'x', code } } });
     await screen.findByRole('region', { name: 'Rollen' });
@@ -282,11 +289,11 @@ describe('Kontodetail: Einzelrechte (Ticket #36)', () => {
   });
 
   it.each([
-    ['self_escalation', 403, 'Sie können sich selbst keine Einzelrechte'],
-    ['permission_not_held', 403, 'Sie besitzen dieses Recht nicht'],
+    ['self_escalation', 403, 'Sie können sich selbst keine Rollen oder Einzelrechte'],
+    ['permission_not_held', 403, 'Sie besitzen nicht alle dafür nötigen Rechte'],
     ['student_role_exclusive', 409, 'Schüler/in'],
     ['admin_overrides_forbidden', 409, 'Schuladmin'],
-    ['forbidden', 403, 'Dafür fehlt Ihnen die Berechtigung']
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
   ])('uebersetzt den Fehlercode %s in einen Text und laedt die Sicht neu', async (code, status, text) => {
     const { calls } = mountWith({ [GRANT]: { status, data: { error: 'x', code } } });
     await screen.findByRole('region', { name: 'Einzelrechte' });

@@ -41,6 +41,10 @@ export interface PermissionAction {
   reason: string | null;
 }
 
+/**
+ * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
+ * Verwaltungsrecht); nur dann liefert sie auch E-Mail, Anmeldename und Status.
+ */
 export interface AccountAccess {
   account: { id: string; email: string | null; login_name: string; status: string; mfa_required: boolean };
   roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];

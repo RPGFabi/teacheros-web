@@ -117,6 +117,7 @@ describe('Konten: Einladen', () => {
     ['username_login_disabled', 400, 'Konten ohne E-Mail-Adresse'],
     ['account_disabled', 409, 'Dieses Konto ist gesperrt'],
     ['invalid_request', 400, 'Die Anfrage wurde abgelehnt'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht'],
     ['auth_unavailable', 502, 'Der Anmeldedienst ist gerade nicht erreichbar']
   ])('uebersetzt den Code %s in einen verstaendlichen Text', async (code, status, text) => {
     const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status, data: { error: 'x', code } } });

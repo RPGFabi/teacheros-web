@@ -1,3 +1,5 @@
+import { ADMINISTRATION_PERMISSIONS } from '../account/permissions';
+
 export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'account';
 
 export interface Portal {
@@ -37,7 +39,7 @@ export const portals: Portal[] = [
     label: 'Rollen',
     path: '#/rollen',
     description: 'Rollen und Rechte der Schulinstanz.',
-    requiresAny: ['roles.manage', 'roles.assign', 'permissions.assign']
+    requiresAny: ADMINISTRATION_PERMISSIONS
   },
   {
     id: 'account',

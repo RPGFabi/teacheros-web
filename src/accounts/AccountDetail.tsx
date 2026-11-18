@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import { errorCode } from '../api/errors';
 import { statusLabel } from '../account/status';
-import { sourceLabel, type AccountAccess, type PermissionAction, type RoleAction } from './access';
-import EffectivePermissions from './EffectivePermissions';
+import type { AccountAccess, PermissionAction, RoleAction } from './access';
+import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -15,31 +16,22 @@ interface Props {
   onBack: () => void;
 }
 
-/** Verstaendliche Texte fuer die Fehlercodes der API beim Vergeben und Entziehen. */
+/** Verstaendliche Texte fuer die Fehlercodes der API beim Vergeben, Entziehen, Gewaehren und Zuruecksetzen (Rollen wie Einzelrechte). */
 const ERROR_TEXT: Record<string, string> = {
-  self_escalation: 'Sie können sich selbst keine Rolle geben.',
-  permission_not_held: 'Sie besitzen nicht alle Rechte dieser Rolle und dürfen sie deshalb weder vergeben noch entziehen.',
+  self_escalation: 'Sie können sich selbst keine Rollen oder Einzelrechte geben, entziehen oder zurücksetzen.',
+  permission_not_held: 'Sie besitzen nicht alle dafür nötigen Rechte und dürfen deshalb nichts vergeben, entziehen oder zurücksetzen.',
   student_role_exclusive: 'Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte.',
-  admin_overrides_forbidden: 'Konten mit Einzelrechten können nicht Schuladmin werden. Setzen Sie die Einzelrechte zuerst zurück.',
+  admin_overrides_forbidden: 'Konten mit der Rolle Schuladmin haben keine Einzelrechte; Konten mit Einzelrechten können nicht Schuladmin werden. Setzen Sie die Einzelrechte zuerst zurück.',
   last_admin: 'Das ist der letzte aktive Schuladmin. Ernennen Sie zuerst einen weiteren Schuladmin, der sich schon angemeldet hat.',
+  unknown_permission: 'Dieses Recht gibt es nicht.',
   role_not_found: 'Diese Rolle gibt es nicht mehr.',
   account_not_found: 'Dieses Konto gibt es nicht mehr.',
-  forbidden: 'Dafür fehlt Ihnen die Berechtigung.'
+  forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.'
 };
 
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
-
-/** Fehlercodes der API beim Gewaehren, Entziehen und Zuruecksetzen von Einzelrechten. */
-const PERMISSION_ERROR_TEXT: Record<string, string> = {
-  self_escalation: 'Sie können sich selbst keine Einzelrechte geben, entziehen oder zurücksetzen.',
-  permission_not_held: 'Sie besitzen dieses Recht nicht und dürfen es deshalb weder gewähren noch entziehen oder zurücksetzen.',
-  student_role_exclusive: 'Ein Konto mit der Rolle Schüler/in hat keine Einzelrechte.',
-  admin_overrides_forbidden: 'Konten mit der Rolle Schuladmin haben keine Einzelrechte.',
-  unknown_permission: 'Dieses Recht gibt es nicht.',
-  account_not_found: ERROR_TEXT.account_not_found,
-  forbidden: ERROR_TEXT.forbidden
-};
+const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
   grant: { button: 'Gewähren', label: 'Einzelrecht gewähren', done: 'gewährt' },
@@ -48,8 +40,8 @@ const PERMISSION_VERBS = {
 } as const;
 
 function describeFailure(err: unknown): string {
-  const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
-  return (typeof code === 'string' && ERROR_TEXT[code]) || 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
+  const code = errorCode(err);
+  return (code !== undefined && ERROR_TEXT[code]) || SAVE_FAILED;
 }
 
 /**
@@ -72,8 +64,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     try {
       setAccess((await apiClient.get<AccountAccess>(`/api/accounts/${accountId}/access`)).data);
     } catch (err) {
-      const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
-      setLoadError(code === 'account_not_found' ? ERROR_TEXT.account_not_found : 'Das Konto konnte nicht geladen werden.');
+      setLoadError(errorCode(err) === 'account_not_found' ? ERROR_TEXT.account_not_found : 'Das Konto konnte nicht geladen werden.');
     }
   }, [apiClient, accountId]);
 
@@ -109,8 +100,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       setAccess(data);
       setNotice(`Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
     } catch (err) {
-      const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
-      setError((typeof code === 'string' && PERMISSION_ERROR_TEXT[code]) || 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
+      setError(describeFailure(err));
       await load();
     } finally {
       setBusy(false);
@@ -173,15 +163,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <tr key={item.permission}>
         <th scope="row">{item.name}</th>
         <td>
-          {row ? (
-            <ul>
-              {row.sources.map((source, index) => (
-                <li key={index}>{sourceLabel(source)}</li>
-              ))}
-            </ul>
-          ) : (
-            'Keine'
-          )}
+          <PermissionSources sources={row?.sources ?? []} />
         </td>
         <td>
           <Button
@@ -208,8 +190,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <p>{back}</p>
       <h1>{access.account.email ?? access.account.login_name}</h1>
       <p>
-        Anmeldename {access.account.login_name} · {statusLabel(access.account.status)} · Mehrfaktor-Anmeldung{' '}
-        {access.account.mfa_required ? 'erforderlich' : 'nicht erforderlich'}
+        Anmeldename {access.account.login_name} · {statusLabel(access.account.status)} · Erfordert MFA:{' '}
+        {access.account.mfa_required ? 'Ja' : 'Nein'}
       </p>
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}

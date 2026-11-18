@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import { errorCode } from '../api/errors';
 import { statusLabel } from '../account/status';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 import AccountDetail from './AccountDetail';
@@ -18,7 +19,7 @@ interface Props {
   apiClient: AxiosInstance;
   /** Recht `accounts.invite` aus GET /api/me; ohne es gibt es keine Einladen-Schaltflaechen. */
   canInvite: boolean;
-  /** Eines der drei Verwaltungsrechte aus GET /api/me: ohne es gibt es keine Detailansicht (die API verweigert sie). */
+  /** `accounts.view` und eines der drei Verwaltungsrechte aus GET /api/me: ohne beides gibt es keine Detailansicht (die API verweigert sie). */
   canViewAccess?: boolean;
   /** Recht `roles.assign` aus GET /api/me; ohne es sind Vergeben und Entziehen in der Detailansicht gesperrt. */
   canAssignRoles?: boolean;
@@ -51,13 +52,13 @@ const ERROR_TEXT: Record<string, string> = {
   username_login_disabled: 'Konten ohne E-Mail-Adresse sind an dieser Schulinstanz nicht eingerichtet. Bitte geben Sie eine E-Mail-Adresse an.',
   account_disabled: 'Dieses Konto ist gesperrt und kann nicht eingeladen werden.',
   invalid_request: 'Die Anfrage wurde abgelehnt. Bitte prüfen Sie Ihre Angaben.',
-  forbidden: 'Dafür fehlt Ihnen die Berechtigung.',
+  forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.',
   auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Es wurde nichts angelegt; bitte versuchen Sie es gleich noch einmal.'
 };
 
 function describeFailure(err: unknown): string {
-  const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
-  return (typeof code === 'string' && ERROR_TEXT[code]) || 'Die Einladung konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
+  const code = errorCode(err);
+  return (code !== undefined && ERROR_TEXT[code]) || 'Die Einladung konnte nicht gesendet werden. Bitte versuchen Sie es erneut.';
 }
 
 /** Daten der Einladungskarte zu einem Einladungscode der Antwort. */

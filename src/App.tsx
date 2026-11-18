@@ -3,15 +3,11 @@ import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
-import { hasPermission } from './account/permissions';
+import { ADMINISTRATION_PERMISSIONS, hasPermission } from './account/permissions';
+import { errorCode } from './api/errors';
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import { apiClient as defaultApiClient } from './api/client';
-
-/** Die drei Verwaltungsrechte: mit einem davon sind Rollen und Zuweisungen lesbar. */
-const ADMINISTRATION = ['roles.manage', 'roles.assign', 'permissions.assign'];
-
-
 
 export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
   const [active, setActive] = useState<PortalId>(initialPortal);
@@ -26,8 +22,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
       .then((response) => !cancelled && setMe(response.data))
       .catch((err) => {
         if (cancelled) return;
-        const code = err?.response?.data?.code;
-        setMeError(code === 'account_inactive' ? 'Ihr Konto ist nicht aktiv. Bitte wenden Sie sich an die Schuladministration.' : 'Die Kontodaten konnten nicht geladen werden.');
+        setMeError(errorCode(err) === 'account_inactive' ? 'Ihr Konto ist nicht aktiv. Bitte wenden Sie sich an die Schuladministration.' : 'Die Kontodaten konnten nicht geladen werden.');
       });
     return () => {
       cancelled = true;
@@ -76,7 +71,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         <AccountsPage
           apiClient={apiClient}
           canInvite={hasPermission(me, 'accounts.invite')}
-          canViewAccess={ADMINISTRATION.some((permission) => hasPermission(me, permission))}
+          canViewAccess={hasPermission(me, 'accounts.view') && ADMINISTRATION_PERMISSIONS.some((permission) => hasPermission(me, permission))}
           canAssignRoles={hasPermission(me, 'roles.assign')}
           canAssignPermissions={hasPermission(me, 'permissions.assign')}
         />
