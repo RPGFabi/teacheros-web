@@ -153,6 +153,32 @@ describe('Kontodetail: Rollen vergeben und entziehen', () => {
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
   });
 
+  it('sperrt Schuladmin entziehen beim letzten aktiven Admin mit der Begruendung der API', async () => {
+    const reason = 'Das ist der letzte aktive Schuladmin. Ernennen Sie zuerst einen weiteren Schuladmin, der sich schon angemeldet hat.';
+    const lastAdmin: AccountAccess = {
+      ...ACCESS,
+      roles: [{ id: 'r-schuladmin', key: 'schuladmin', name: 'Schuladmin', protection: 'wildcard', requires_mfa: true }],
+      role_actions: [action('schuladmin', 'Schuladmin', { action: 'revoke', allowed: false, code: 'last_admin', reason }), action('sekretariat', 'Sekretariat')]
+    };
+    mount({ [path]: { data: lastAdmin } });
+
+    const button = await screen.findByRole('button', { name: 'Rolle entziehen: Schuladmin' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+    expect(screen.getByText(reason)).toBeVisible();
+  });
+
+  it('meldet last_admin beim Entziehen verstaendlich (etwa wenn ein anderer Admin schneller war) und laedt neu', async () => {
+    const { calls } = mount({ [`POST /api/accounts/${ID}/roles/r-lehrkraft/revoke`]: { status: 409, data: { error: 'x', code: 'last_admin' } } });
+    await screen.findByRole('region', { name: 'Rollen' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rolle entziehen: Lehrkraft' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('letzte aktive Schuladmin');
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+
   it('ruft den Zurueck-Handler auf', async () => {
     let back = 0;
     mount({}, { onBack: () => back++ });
