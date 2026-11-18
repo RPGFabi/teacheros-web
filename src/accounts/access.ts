@@ -1,7 +1,7 @@
 /** Herkunft eines Rechts laut `GET /api/accounts/{id}/access` (Ticket #34). */
 export type PermissionSource =
   | { kind: 'role'; role_id: string; role_key: string; role_name: string }
-  /** Einzelrecht gewaehrt (Ticket #36 vergibt es). */
+  /** Einzelrecht gewaehrt (Ticket #36). */
   | { kind: 'individual' }
   /** Einzelrecht entzogen: das Recht gilt dann nicht, auch wenn eine Rolle es gibt. */
   | { kind: 'withdrawn' };
@@ -26,11 +26,27 @@ export interface RoleAction {
   reason: string | null;
 }
 
+/**
+ * Die fuer den Betrachter moegliche Einzelrecht-Aktion zu einem Katalogrecht (Ticket #36): `grant` (gewaehren),
+ * `withdraw` (trotz Rolle entziehen) oder `clear` (zuruecksetzen: es gilt wieder, was die Rollen ergeben).
+ * Gesperrt mit Code und deutscher Begruendung.
+ */
+export interface PermissionAction {
+  permission: string;
+  name: string;
+  group: string;
+  action: 'grant' | 'withdraw' | 'clear';
+  allowed: boolean;
+  code: string | null;
+  reason: string | null;
+}
+
 export interface AccountAccess {
   account: { id: string; email: string | null; login_name: string; status: string; mfa_required: boolean };
   roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
   permissions: PermissionRow[];
   role_actions: RoleAction[];
+  permission_actions: PermissionAction[];
 }
 
 /** Anzeigetext einer Herkunft. */

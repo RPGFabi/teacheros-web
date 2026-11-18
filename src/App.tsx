@@ -78,6 +78,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
           canInvite={hasPermission(me, 'accounts.invite')}
           canViewAccess={ADMINISTRATION.some((permission) => hasPermission(me, permission))}
           canAssignRoles={hasPermission(me, 'roles.assign')}
+          canAssignPermissions={hasPermission(me, 'permissions.assign')}
         />
       ) : portal.id === 'roles' ? (
         <RolesPage apiClient={apiClient} />

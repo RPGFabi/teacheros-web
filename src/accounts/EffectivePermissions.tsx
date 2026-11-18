@@ -4,7 +4,7 @@ import { sourceLabel, type PermissionRow } from './access';
 interface Props {
   permissions: PermissionRow[];
   /**
-   * Andockpunkt fuer Ticket #36 (Einzelrechte gewaehren, entziehen, zuruecksetzen): erzeugt die Aktionen je Recht.
+   * Optional: erzeugt Aktionen je Recht. Die Einzelrechte (Ticket #36) stehen in einem eigenen Abschnitt der Detailansicht.
    * Ohne Angabe gibt es keine Aktionsspalte.
    */
   renderActions?: (permission: PermissionRow) => ReactNode;
