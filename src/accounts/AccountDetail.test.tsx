@@ -37,7 +37,8 @@ const ACCESS: AccountAccess = {
     action('schuladmin', 'Schuladmin', { allowed: false, code: 'permission_not_held', reason: 'Sie besitzen nicht alle Rechte dieser Rolle.' }),
     action('lehrkraft', 'Lehrkraft', { action: 'revoke' }),
     action('sekretariat', 'Sekretariat')
-  ]
+  ],
+  permission_actions: []
 };
 
 const path = `GET /api/accounts/${ID}/access`;
@@ -159,5 +160,114 @@ describe('Kontodetail: Rollen vergeben und entziehen', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Zurück zur Kontenliste' }));
 
     expect(back).toBe(1);
+  });
+});
+
+const permissionAction = (key: string, name: string, over: Record<string, unknown> = {}) => ({
+  permission: key,
+  name,
+  group: 'Konten',
+  action: 'grant',
+  allowed: true,
+  code: null,
+  reason: null,
+  ...over
+});
+
+/** Einzelrechte-Sicht zu ACCESS: Einladen gewaehrt (zuruecksetzen), Ansehen aus Rolle (entziehen), Rollen entzogen (zuruecksetzen), Verwalten gewaehrbar, Einzelrechte gesperrt. */
+const PERMISSION_ACTIONS = [
+  permissionAction('accounts.view', 'Konten ansehen', { action: 'withdraw' }),
+  permissionAction('accounts.invite', 'Konten einladen', { action: 'clear' }),
+  permissionAction('roles.manage', 'Rollen verwalten', { group: 'Rollen und Rechte' }),
+  permissionAction('roles.assign', 'Rollen vergeben und entziehen', { group: 'Rollen und Rechte', action: 'clear' }),
+  permissionAction('permissions.assign', 'Einzelrechte vergeben und entziehen', {
+    group: 'Rollen und Rechte',
+    allowed: false,
+    code: 'permission_not_held',
+    reason: 'Sie besitzen dieses Recht nicht.'
+  })
+];
+
+describe('Kontodetail: Einzelrechte (Ticket #36)', () => {
+  const GRANT = `POST /api/accounts/${ID}/permissions/grant`;
+  const mountWith = (routes: Parameters<typeof fakeClient>[0] = {}, props: Partial<Parameters<typeof AccountDetail>[0]> = {}) =>
+    mount({ [path]: { data: { ...ACCESS, permission_actions: PERMISSION_ACTIONS } }, ...routes }, { canAssignPermissions: true, ...props });
+
+  it('zeigt einen Abschnitt Einzelrechte mit Herkunft und der passenden Aktion je Recht', async () => {
+    mountWith();
+
+    const section = await screen.findByRole('region', { name: 'Einzelrechte' });
+    const row = (name: string) => within(within(section).getByText(name).closest('tr')!);
+    expect(row('Konten einladen').getByText('Einzelrecht')).toBeInTheDocument();
+    expect(row('Konten einladen').getByRole('button', { name: 'Einzelrecht zurücksetzen: Konten einladen' })).toBeEnabled();
+    expect(row('Konten ansehen').getByRole('button', { name: 'Einzelrecht entziehen: Konten ansehen' })).toBeEnabled();
+    expect(row('Rollen vergeben und entziehen').getByText('Entzogen')).toBeInTheDocument();
+    expect(row('Rollen verwalten').getByRole('button', { name: 'Einzelrecht gewähren: Rollen verwalten' })).toBeEnabled();
+  });
+
+  it('laesst nicht erlaubte Aktionen sichtbar, aber deaktiviert, mit Begruendung', async () => {
+    mountWith();
+
+    const button = await screen.findByRole('button', { name: 'Einzelrecht gewähren: Einzelrechte vergeben und entziehen' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription('Sie besitzen dieses Recht nicht.');
+    expect(screen.getByText('Sie besitzen dieses Recht nicht.')).toBeVisible();
+  });
+
+  it('sperrt ohne permissions.assign alle Aktionen mit Begruendung', async () => {
+    mountWith({}, { canAssignPermissions: false });
+
+    const button = await screen.findByRole('button', { name: 'Einzelrecht gewähren: Rollen verwalten' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(/Einzelrechte vergeben und entziehen/);
+    expect(screen.getByRole('button', { name: 'Einzelrecht entziehen: Konten ansehen' })).toBeDisabled();
+  });
+
+  it('gewaehrt ein Einzelrecht per POST und zeigt danach die Antwort der API', async () => {
+    const after = {
+      ...ACCESS,
+      permission_actions: PERMISSION_ACTIONS.map((a) => (a.permission === 'roles.manage' ? { ...a, action: 'clear' } : a)),
+      permissions: [...ACCESS.permissions, { key: 'roles.manage', name: 'Rollen verwalten', group: 'Rollen und Rechte', effective: true, sources: [{ kind: 'individual' }] }]
+    };
+    const { calls } = mountWith({ [GRANT]: { data: after } });
+    await screen.findByRole('region', { name: 'Einzelrechte' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Einzelrecht gewähren: Rollen verwalten' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Einzelrecht „Rollen verwalten“ gewährt');
+    expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ permission: 'roles.manage' });
+    expect(screen.getByRole('button', { name: 'Einzelrecht zurücksetzen: Rollen verwalten' })).toBeInTheDocument();
+  });
+
+  it('entzieht und setzt zurueck ueber die eigenen Endpunkte', async () => {
+    const ok = { data: { ...ACCESS, permission_actions: PERMISSION_ACTIONS } };
+    const { calls } = mountWith({ [`POST /api/accounts/${ID}/permissions/withdraw`]: ok, [`POST /api/accounts/${ID}/permissions/clear`]: ok });
+    await screen.findByRole('region', { name: 'Einzelrechte' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Einzelrecht entziehen: Konten ansehen' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Einzelrecht „Konten ansehen“ entzogen');
+    await userEvent.click(screen.getByRole('button', { name: 'Einzelrecht zurücksetzen: Konten einladen' }));
+    expect(await screen.findByText('Einzelrecht „Konten einladen“ zurückgesetzt.')).toBeInTheDocument();
+
+    expect(calls.filter((c) => c.method === 'POST').map((c) => [c.url, c.data])).toEqual([
+      [`/api/accounts/${ID}/permissions/withdraw`, { permission: 'accounts.view' }],
+      [`/api/accounts/${ID}/permissions/clear`, { permission: 'accounts.invite' }]
+    ]);
+  });
+
+  it.each([
+    ['self_escalation', 403, 'Sie können sich selbst keine Einzelrechte'],
+    ['permission_not_held', 403, 'Sie besitzen dieses Recht nicht'],
+    ['student_role_exclusive', 409, 'Schüler/in'],
+    ['admin_overrides_forbidden', 409, 'Schuladmin'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen die Berechtigung']
+  ])('uebersetzt den Fehlercode %s in einen Text und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mountWith({ [GRANT]: { status, data: { error: 'x', code } } });
+    await screen.findByRole('region', { name: 'Einzelrechte' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Einzelrecht gewähren: Rollen verwalten' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
   });
 });

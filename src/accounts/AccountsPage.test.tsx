@@ -290,7 +290,8 @@ describe('Konten: Detailansicht (Ticket #34)', () => {
     account: { id: ADMIN.id, email: ADMIN.email, login_name: ADMIN.login_name, status: 'active', mfa_required: true },
     roles: [],
     permissions: [],
-    role_actions: []
+    role_actions: [],
+    permission_actions: []
   };
   const routes = { ...list(ADMIN, INVITED), [`GET /api/accounts/${ADMIN.id}/access`]: { data: access } };
 
@@ -306,6 +307,22 @@ describe('Konten: Detailansicht (Ticket #34)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Zurück zur Kontenliste' }));
     expect(await screen.findByText('neu@schule.test', { selector: 'td' })).toBeInTheDocument();
+  });
+
+  it('reicht permissions.assign an die Detailansicht weiter (Ticket #36)', async () => {
+    const withAction = {
+      ...access,
+      permission_actions: [{ permission: 'accounts.view', name: 'Konten ansehen', group: 'Konten', action: 'grant', allowed: true, code: null, reason: null }]
+    };
+    const { client } = fakeClient({ ...routes, [`GET /api/accounts/${ADMIN.id}/access`]: { data: withAction } });
+    const { unmount } = render(<AccountsPage apiClient={client} canInvite={false} canViewAccess canAssignPermissions />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollen und Rechte: admin@schule.test' }));
+    expect(await screen.findByRole('button', { name: 'Einzelrecht gewähren: Konten ansehen' })).toBeEnabled();
+    unmount();
+
+    render(<AccountsPage apiClient={client} canInvite={false} canViewAccess />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollen und Rechte: admin@schule.test' }));
+    expect(await screen.findByRole('button', { name: 'Einzelrecht gewähren: Konten ansehen' })).toBeDisabled();
   });
 
   it('zeigt ohne Verwaltungsrecht keine Detail-Schaltflaeche', async () => {
