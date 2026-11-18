@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card } from '@hoelzle/react-ui';
+import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { errorCode } from '../api/errors';
 import { statusLabel } from '../account/status';
@@ -29,9 +29,17 @@ const ERROR_TEXT: Record<string, string> = {
   forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.'
 };
 
+/** Fehlertexte der Deaktivierung; ersetzen bei gleichem Code die allgemeinen Texte. */
+const DEACTIVATE_ERROR_TEXT: Record<string, string> = {
+  self_deactivation: 'Sie können sich nicht selbst deaktivieren.',
+  account_not_active: 'Nur aktive Konten lassen sich deaktivieren.',
+  permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.'
+};
+
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
 const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
+const DEACTIVATE_FAILED = 'Das Konto konnte nicht deaktiviert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
   grant: { button: 'Gewähren', label: 'Einzelrecht gewähren', done: 'gewährt' },
@@ -39,9 +47,9 @@ const PERMISSION_VERBS = {
   clear: { button: 'Zurücksetzen', label: 'Einzelrecht zurücksetzen', done: 'zurückgesetzt' }
 } as const;
 
-function describeFailure(err: unknown): string {
+function describeFailure(err: unknown, overrides: Record<string, string> = {}, fallback = SAVE_FAILED): string {
   const code = errorCode(err);
-  return (code !== undefined && ERROR_TEXT[code]) || SAVE_FAILED;
+  return (code !== undefined && (overrides[code] ?? ERROR_TEXT[code])) || fallback;
 }
 
 /**
@@ -51,6 +59,8 @@ function describeFailure(err: unknown): string {
  * Einzelrechte (Ticket #36) folgen demselben Muster ueber `permission_actions`: ein Abschnitt mit allen Katalogrechten,
  * je Recht die eine moegliche Aktion (gewaehren, entziehen, zuruecksetzen). Der letzte aktive Schuladmin (Ticket #35,
  * `last_admin`) kommt als gesperrte Aktion mit Begruendung in `role_actions`.
+ * Konto deaktivieren (Ticket #41): „Deaktivieren …“ mit Bestaetigungsdialog; ob die Aktion erlaubt ist, sagt die API in
+ * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, canAssignPermissions = false, onBack }: Props) {
   const [access, setAccess] = useState<AccountAccess | null>(null);
@@ -58,6 +68,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -101,6 +112,22 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       setNotice(`Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
     } catch (err) {
       setError(describeFailure(err));
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deactivate() {
+    setConfirmingDeactivation(false);
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/deactivate`)).data);
+      setNotice('Konto deaktiviert.');
+    } catch (err) {
+      setError(describeFailure(err, DEACTIVATE_ERROR_TEXT, DEACTIVATE_FAILED));
       await load();
     } finally {
       setBusy(false);
@@ -154,6 +181,10 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     );
   };
 
+  const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
+  const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const accountName = access.account.email ?? access.account.login_name;
+
   const permissionRow = (item: PermissionAction) => {
     const row = access.permissions.find((p) => p.key === item.permission);
     const blocked = !canAssignPermissions ? NO_PERMISSION_RIGHT_REASON : item.allowed ? null : (item.reason ?? 'Diese Aktion ist nicht erlaubt.');
@@ -190,11 +221,39 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <p>{back}</p>
       <h1>{access.account.email ?? access.account.login_name}</h1>
       <p>
-        Anmeldename {access.account.login_name} · {statusLabel(access.account.status)} · Erfordert MFA:{' '}
+        Anmeldename {access.account.login_name} · {statusLabel(access.account.status, access.account.inactive_since)} · Erfordert MFA:{' '}
         {access.account.mfa_required ? 'Ja' : 'Nein'}
       </p>
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
+      <Card>
+        <section aria-label="Konto">
+          <h2>Konto</h2>
+          <p>Eine Deaktivierung sperrt das Konto sofort. Rollen und Rechte bleiben erhalten.</p>
+          <Button
+            variant="secondary"
+            disabled={busy || deactivationBlocked !== null}
+            aria-describedby={deactivationBlocked ? 'deactivate-hint' : undefined}
+            onClick={() => setConfirmingDeactivation(true)}
+          >
+            Deaktivieren …
+          </Button>
+          {deactivationBlocked && (
+            <small id="deactivate-hint" style={{ display: 'block' }}>
+              {deactivationBlocked}
+            </small>
+          )}
+        </section>
+      </Card>
+      <ConfirmDialog
+        open={confirmingDeactivation}
+        title={`Konto „${accountName}“ deaktivieren?`}
+        description="Die Person kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Rollen und Daten bleiben erhalten; die Verwaltung kann das Konto später reaktivieren."
+        confirmText="Deaktivieren"
+        variant="danger"
+        onConfirm={() => void deactivate()}
+        onCancel={() => setConfirmingDeactivation(false)}
+      />
       <Card>
         <section aria-label="Rollen">
           <h2>Rollen</h2>

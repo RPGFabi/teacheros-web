@@ -20,7 +20,7 @@ const action = (key: string, name: string, over: Record<string, unknown> = {}) =
 
 /** Konto mit der Rolle Lehrkraft; Sekretariat ist vergebbar, Schuladmin gesperrt. */
 const ACCESS: AccountAccess = {
-  account: { id: ID, email: 'ziel@schule.test', login_name: 'ziel', status: 'active', mfa_required: true },
+  account: { id: ID, email: 'ziel@schule.test', login_name: 'ziel', status: 'active', inactive_since: null, inactive_reason: null, mfa_required: true },
   roles: [{ id: 'r-lehrkraft', key: 'lehrkraft', name: 'Lehrkraft', protection: 'standard', requires_mfa: true }],
   permissions: [
     { key: 'accounts.view', name: 'Konten ansehen', group: 'Konten', effective: true, sources: [{ kind: 'role', role_id: 'r-lehrkraft', role_key: 'lehrkraft', role_name: 'Lehrkraft' }] },
@@ -38,7 +38,8 @@ const ACCESS: AccountAccess = {
     action('lehrkraft', 'Lehrkraft', { action: 'revoke' }),
     action('sekretariat', 'Sekretariat')
   ],
-  permission_actions: []
+  permission_actions: [],
+  account_actions: [{ action: 'deactivate', allowed: true, code: null, reason: null }]
 };
 
 const path = `GET /api/accounts/${ID}/access`;
@@ -302,5 +303,87 @@ describe('Kontodetail: Einzelrechte (Ticket #36)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(text);
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+});
+
+describe('Kontodetail: Konto deaktivieren (Ticket #41)', () => {
+  const DEACTIVATE = `POST /api/accounts/${ID}/deactivate`;
+  const INACTIVE: AccountAccess = {
+    ...ACCESS,
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked' },
+    account_actions: [{ action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' }]
+  };
+
+  it('zeigt „Deaktivieren …“ aktiv, wenn die API die Aktion erlaubt, und fragt vor dem Ausfuehren nach', async () => {
+    const { calls } = mount({ [DEACTIVATE]: { data: INACTIVE } });
+
+    const button = await screen.findByRole('button', { name: 'Deaktivieren …' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('ziel@schule.test');
+    expect(dialog).toHaveTextContent('Sitzungen enden sofort');
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('Abbrechen im Dialog deaktiviert nichts', async () => {
+    const { calls } = mount({});
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('deaktiviert nach Bestaetigung und zeigt danach Status mit Datum und die Antwort der API', async () => {
+    const { calls } = mount({ [DEACTIVATE]: { data: INACTIVE } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deaktivieren' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Konto deaktiviert');
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/deactivate`]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText(/Deaktiviert seit 18\.11\.2026/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deaktivieren …' })).toBeDisabled();
+  });
+
+  it('laesst die Aktion sichtbar, aber deaktiviert, mit der Begruendung der API', async () => {
+    const reason = 'Sie können sich nicht selbst deaktivieren.';
+    mount({ [path]: { data: { ...ACCESS, account_actions: [{ action: 'deactivate', allowed: false, code: 'self_deactivation', reason }] } } });
+
+    const button = await screen.findByRole('button', { name: 'Deaktivieren …' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+    expect(screen.getByText(reason)).toBeVisible();
+  });
+
+  it.each([
+    ['self_deactivation', 409, 'nicht selbst deaktivieren'],
+    ['account_not_active', 409, 'Nur aktive Konten'],
+    ['last_admin', 409, 'letzte aktive Schuladmin'],
+    ['permission_not_held', 403, 'nicht alle Rechte dieses Kontos'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
+  ])('uebersetzt den Fehlercode %s in einen Text, schliesst den Dialog und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mount({ [DEACTIVATE]: { status, data: { error: 'x', code } } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deaktivieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [DEACTIVATE]: { status: 500 } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Deaktivieren …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deaktivieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das Konto konnte nicht deaktiviert werden');
   });
 });

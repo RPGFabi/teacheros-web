@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { errorCode } from '../api/errors';
-import { statusLabel } from '../account/status';
+import { formatDate, statusLabel } from '../account/status';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 import AccountDetail from './AccountDetail';
 
@@ -13,6 +13,8 @@ export interface AccountRow {
   status: 'invited' | 'active' | 'inactive' | string;
   /** ISO 8601 (UTC) oder null, wenn das Konto nie eingeladen wurde. */
   invited_at: string | null;
+  /** ISO 8601 (UTC): seit wann das Konto deaktiviert ist; sonst null (Ticket #41). */
+  inactive_since?: string | null;
 }
 
 interface Props {
@@ -64,10 +66,6 @@ function describeFailure(err: unknown): string {
 /** Daten der Einladungskarte zu einem Einladungscode der Antwort. */
 function cardFor(data: InvitationResponse, code: string): InvitationCardData {
   return { loginName: data.account.login_name, code, validUntil: data.invite_expires_at };
-}
-
-function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('de-DE') : '–';
 }
 
 export default function AccountsPage({
@@ -212,7 +210,7 @@ export default function AccountsPage({
                 <tr key={account.id}>
                   <td>{account.email ?? '–'}</td>
                   <td>{account.login_name}</td>
-                  <td>{statusLabel(account.status)}</td>
+                  <td>{statusLabel(account.status, account.inactive_since)}</td>
                   <td>{formatDate(account.invited_at)}</td>
                   {(canInvite || canViewAccess) && (
                     <td>

@@ -41,16 +41,35 @@ export interface PermissionAction {
   reason: string | null;
 }
 
+/** Eine Aktion am Konto selbst (Ticket #41: `deactivate`); gesperrt mit Code und deutscher Begruendung. */
+export interface AccountAction {
+  action: 'deactivate';
+  allowed: boolean;
+  code: string | null;
+  reason: string | null;
+}
+
 /**
  * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
  * Verwaltungsrecht); nur dann liefert sie auch E-Mail, Anmeldename und Status.
  */
 export interface AccountAccess {
-  account: { id: string; email: string | null; login_name: string; status: string; mfa_required: boolean };
+  account: {
+    id: string;
+    email: string | null;
+    login_name: string;
+    status: string;
+    /** ISO 8601 (UTC) der Deaktivierung, sonst null (Ticket #41). */
+    inactive_since: string | null;
+    /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
+    inactive_reason: string | null;
+    mfa_required: boolean;
+  };
   roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
   permissions: PermissionRow[];
   role_actions: RoleAction[];
   permission_actions: PermissionAction[];
+  account_actions: AccountAction[];
 }
 
 /** Anzeigetext einer Herkunft. */

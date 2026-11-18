@@ -6,7 +6,7 @@ import { fakeClient } from '../test/fakeHttp';
 
 const ADMIN = { id: '11111111-1111-4111-8111-111111111111', email: 'admin@schule.test', login_name: 'admin', status: 'active', invited_at: '2026-11-10T12:00:00+00:00' };
 const INVITED = { id: '22222222-2222-4222-8222-222222222222', email: 'neu@schule.test', login_name: 'max.muster', status: 'invited', invited_at: '2026-11-12T12:00:00+00:00' };
-const INACTIVE = { id: '33333333-3333-4333-8333-333333333333', email: null, login_name: 'sperre', status: 'inactive', invited_at: null };
+const INACTIVE = { id: '33333333-3333-4333-8333-333333333333', email: null, login_name: 'sperre', status: 'inactive', invited_at: null, inactive_since: '2026-11-17T10:00:00+00:00' };
 
 const list = (...accounts: unknown[]) => ({ 'GET /api/accounts': { data: { accounts } } });
 
@@ -22,7 +22,7 @@ describe('Konten: Liste', () => {
     expect(within(row).getByText('Eingeladen')).toBeInTheDocument();
     expect(within(row).getByText('12.11.2026')).toBeInTheDocument();
     expect(screen.getByText('Aktiv')).toBeInTheDocument();
-    expect(screen.getByText('Inaktiv')).toBeInTheDocument();
+    expect(screen.getByText('Deaktiviert seit 17.11.2026')).toBeInTheDocument();
   });
 
   it('zeigt bei einem Ladefehler eine Meldung und laedt auf Wunsch erneut', async () => {
@@ -288,11 +288,12 @@ describe('Konten: Einladung per Anmeldename mit Einladungskarte', () => {
 
 describe('Konten: Detailansicht (Ticket #34)', () => {
   const access = {
-    account: { id: ADMIN.id, email: ADMIN.email, login_name: ADMIN.login_name, status: 'active', mfa_required: true },
+    account: { id: ADMIN.id, email: ADMIN.email, login_name: ADMIN.login_name, status: 'active', inactive_since: null, inactive_reason: null, mfa_required: true },
     roles: [],
     permissions: [],
     role_actions: [],
-    permission_actions: []
+    permission_actions: [],
+    account_actions: []
   };
   const routes = { ...list(ADMIN, INVITED), [`GET /api/accounts/${ADMIN.id}/access`]: { data: access } };
 
