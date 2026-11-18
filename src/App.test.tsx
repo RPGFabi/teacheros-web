@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import App from './App';
 import { fakeClient } from './test/fakeHttp';
+import { createBlock } from './test/roleFixtures';
 
 describe('App-Schale', () => {
   it('zeigt Navigation fuer Lehrkraefte- und Verwaltungsportal mit neutralem Produktnamen', () => {
@@ -134,10 +135,10 @@ describe('Menuepunkt Rollen (eines der drei Verwaltungsrechte)', () => {
   it.each([
     ['roles.manage', true],
     ['roles.assign', false]
-  ])('Rolle anlegen ist mit %s aktiviert: %s', async (permission, enabled) => {
+  ])('Rolle anlegen folgt der Auskunft der API (mit %s erlaubt: %s)', async (permission, enabled) => {
     const { client } = fakeClient({
       'GET /api/me': { data: ME([permission]) },
-      'GET /api/roles': { data: { roles: [] } },
+      'GET /api/roles': { data: { roles: [], create: createBlock({ catalogKeys: [], forbidden: !enabled }) } },
       'GET /api/permissions': { data: { permissions: [] } }
     });
     render(<App apiClient={client} />);

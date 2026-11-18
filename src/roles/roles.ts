@@ -1,3 +1,32 @@
+import { errorCode } from '../api/errors';
+
+/** Ob der Betrachter eine Aktion ausfuehren darf; gesperrt mit Code und deutscher Begruendung der API. */
+export interface Outcome {
+  allowed: boolean;
+  code: string | null;
+  reason: string | null;
+}
+
+/** Aktion auf einer Rolle (Review #11): bearbeiten, loeschen oder das MFA-Merkmal aendern. */
+export interface RoleAction extends Outcome {
+  action: 'edit' | 'delete' | 'set_mfa';
+}
+
+/** Ob ein noch fehlendes Recht der Rolle (bzw. einer neuen Rolle) hinzugefuegt werden darf. */
+export interface PermissionGrant extends Outcome {
+  permission: string;
+}
+
+/** Block `create` von `GET /api/roles`: darf der Betrachter Rollen anlegen, und welche Rechte darf er ihnen geben? */
+export interface CreateAction extends Outcome {
+  permission_actions: PermissionGrant[];
+}
+
+export interface RolesResponse {
+  roles: RoleRow[];
+  create: CreateAction;
+}
+
 /** Rolle laut `GET /api/roles` (Ticket #32). Wildcard-Rollen kommen als `all_permissions`; `*` gibt es hier nie. */
 export interface RoleRow {
   id: string;
@@ -11,6 +40,10 @@ export interface RoleRow {
   requires_mfa: boolean;
   protection: 'wildcard' | 'protected' | 'standard' | 'custom' | string;
   account_count: number;
+  /** Was der Betrachter an dieser Rolle tun darf, mit Begruendung bei einem Nein (die Regeln liegen in der API). */
+  actions: RoleAction[];
+  /** Je Recht, das die Rolle noch nicht hat: darf der Betrachter es hinzufuegen? */
+  permission_actions: PermissionGrant[];
 }
 
 /** Recht laut `GET /api/permissions`: deutscher Name und Gruppe. */
@@ -63,6 +96,16 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 export function describeRoleFailure(err: unknown, fallback: string): string {
-  const code = (err as { response?: { data?: { code?: unknown } } })?.response?.data?.code;
-  return (typeof code === 'string' && ERROR_TEXT[code]) || fallback;
+  const code = errorCode(err);
+  return (code !== undefined && ERROR_TEXT[code]) || fallback;
+}
+
+const UNAVAILABLE = 'Diese Aktion ist nicht möglich.';
+
+/** Begruendung, warum eine Aktion gesperrt ist (aus der API); `null` = erlaubt. Fehlt die Auskunft, gilt die Aktion als gesperrt. */
+export function blockedReason(outcome: Outcome | undefined): string | null {
+  if (outcome === undefined) {
+    return UNAVAILABLE;
+  }
+  return outcome.allowed ? null : (outcome.reason ?? UNAVAILABLE);
 }

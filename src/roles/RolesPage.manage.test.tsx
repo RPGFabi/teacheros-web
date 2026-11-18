@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import RolesPage from './RolesPage';
 import { fakeClient, type FakeCall } from '../test/fakeHttp';
+import { createBlock, role as baseRole, SELF_ESCALATION, type Viewer } from '../test/roleFixtures';
 
 const CATALOG = [
   { key: 'accounts.view', name: 'Konten ansehen', group: 'Konten' },
@@ -10,21 +11,14 @@ const CATALOG = [
   { key: 'roles.manage', name: 'Rollen verwalten', group: 'Rollen und Rechte' },
   { key: 'roles.assign', name: 'Rollen vergeben und entziehen', group: 'Rollen und Rechte' }
 ];
-const ALL = CATALOG.map((c) => c.key);
+const KEYS = CATALOG.map((c) => c.key);
 
-const role = (over: Record<string, unknown>) => ({
-  id: 'r-' + over.key,
-  description: null,
-  permissions: [],
-  all_permissions: false,
-  requires_mfa: false,
-  protection: 'standard',
-  account_count: 0,
-  ...over
-});
+/** Die Fake-API meldet Aktionen fuer diesen Betrachter, so wie die echte API es aus ihren Regeln taete. */
+let viewer: Viewer = {};
+const role = (over: Record<string, unknown>) => baseRole(over, { catalogKeys: KEYS, ...viewer });
 
 const baseRoles = () => [
-  role({ key: 'schuladmin', name: 'Schuladmin', permissions: ALL, all_permissions: true, requires_mfa: true, protection: 'wildcard', account_count: 2 }),
+  role({ key: 'schuladmin', name: 'Schuladmin', permissions: KEYS, all_permissions: true, requires_mfa: true, protection: 'wildcard', account_count: 2 }),
   role({ key: 'schueler', name: 'Schüler/in', protection: 'protected', account_count: 120 }),
   role({ key: 'lehrkraft', name: 'Lehrkraft', permissions: ['accounts.view'], requires_mfa: true, account_count: 14 }),
   role({ key: 'r_ab12', name: 'Vertretungsplan', description: 'Eigene Rolle.', permissions: ['accounts.view', 'roles.assign'], requires_mfa: true, protection: 'custom' }),
@@ -32,10 +26,11 @@ const baseRoles = () => [
 ];
 
 /** Fake-API mit veraenderlicher Rollenliste; Schreibwege lassen sich pro Test ueberschreiben. */
-function setup(extra: Record<string, Parameters<typeof fakeClient>[0][string]> = {}, props: { canManage?: boolean; held?: string[] } = {}) {
+function setup(extra: Record<string, Parameters<typeof fakeClient>[0][string]> = {}, who: Viewer = {}, rolesOverride?: () => unknown[]) {
+  viewer = who;
   let roles = baseRoles();
   const { client, calls } = fakeClient({
-    'GET /api/roles': () => ({ data: { roles } }),
+    'GET /api/roles': () => ({ data: { roles: rolesOverride ? rolesOverride() : roles, create: createBlock({ catalogKeys: KEYS, ...viewer }) } }),
     'GET /api/permissions': { data: { permissions: CATALOG } },
     'POST /api/roles': (call: FakeCall) => {
       const body = call.data as Record<string, unknown>;
@@ -57,7 +52,7 @@ function setup(extra: Record<string, Parameters<typeof fakeClient>[0][string]> =
     },
     ...extra
   });
-  render(<RolesPage apiClient={client} canManage={props.canManage ?? true} heldPermissions={props.held ?? ALL} />);
+  render(<RolesPage apiClient={client} />);
   return { calls, writes: () => calls.filter((c) => c.method !== 'GET') };
 }
 
@@ -112,13 +107,13 @@ describe('Rollen: anlegen', () => {
   });
 
   it('deaktiviert Rechte, die man selbst nicht besitzt, mit Begruendung', async () => {
-    setup({}, { held: ['accounts.view', 'roles.manage'] });
+    setup({}, { notHeld: ['accounts.invite', 'roles.assign'] });
     await rowOf('Lehrkraft');
     await userEvent.click(screen.getByRole('button', { name: 'Rolle anlegen' }));
 
     const invite = within(form()).getByRole('checkbox', { name: /Konten einladen/ });
     expect(invite).toBeDisabled();
-    expect(invite).toHaveAccessibleDescription(/Sie besitzen dieses Recht nicht/);
+    expect(invite).toHaveAccessibleDescription(/Sie können nur Rechte vergeben, die Sie selbst besitzen/);
     expect(within(form()).getByRole('checkbox', { name: /Konten ansehen/ })).toBeEnabled();
   });
 
@@ -187,7 +182,7 @@ describe('Rollen: bearbeiten', () => {
     const mfa = within(form()).getByRole('checkbox', { name: 'Erfordert MFA' });
     expect(mfa).toBeChecked();
     expect(mfa).toBeDisabled();
-    expect(mfa).toHaveAccessibleDescription(/bei Standardrollen fest/i);
+    expect(mfa).toHaveAccessibleDescription(/MFA-Merkmal einer Standardrolle ist fest/);
     await userEvent.click(within(form()).getByRole('checkbox', { name: 'Konten einladen' }));
     await userEvent.click(within(form()).getByRole('button', { name: 'Speichern' }));
 
@@ -209,13 +204,49 @@ describe('Rollen: bearbeiten', () => {
   });
 
   it('erlaubt, ein Recht abzuwaehlen, das man selbst nicht besitzt, aber nicht, es neu zu setzen', async () => {
-    setup({}, { held: ['accounts.view', 'roles.manage'] });
+    setup({}, { notHeld: ['accounts.invite', 'roles.assign'] });
     await rowOf('Vertretungsplan');
     await userEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Vertretungsplan' }));
 
     // roles.assign steckt schon in der Rolle: abwaehlbar. accounts.invite fehlt der Rolle und dem Konto: gesperrt.
     expect(within(form()).getByRole('checkbox', { name: /Rollen vergeben und entziehen/ })).toBeEnabled();
     expect(within(form()).getByRole('checkbox', { name: /Konten einladen/ })).toBeDisabled();
+  });
+
+  it('sperrt das Hinzufuegen von Rechten zu einer selbst innegehabten Rolle vorab mit der Begruendung der API', async () => {
+    const own = () => baseRoles().map((r) => (r.key === 'r_ab12' ? { ...r, permission_actions: r.permission_actions.map((p) => ({ ...p, ...SELF_ESCALATION })) } : r));
+    setup({}, {}, own);
+    await rowOf('Vertretungsplan');
+    await userEvent.click(screen.getByRole('button', { name: 'Bearbeiten: Vertretungsplan' }));
+
+    const invite = within(form()).getByRole('checkbox', { name: /Konten einladen/ });
+    expect(invite).toBeDisabled();
+    expect(invite).toHaveAccessibleDescription(/Rolle, die Sie selbst innehaben, können Sie nicht erweitern/);
+    // Abwaehlen vorhandener Rechte bleibt moeglich.
+    expect(within(form()).getByRole('checkbox', { name: /Konten ansehen/ })).toBeEnabled();
+  });
+
+  it('uebernimmt die Entscheidung der API statt sie nachzurechnen: laut API gesperrt bleibt gesperrt, laut API erlaubt bleibt erlaubt', async () => {
+    const odd = () => {
+      const [, , , custom] = baseRoles();
+      return [
+        {
+          ...custom,
+          actions: [
+            { action: 'edit', allowed: false, code: 'role_protected', reason: 'Gerade nicht bearbeitbar.' },
+            { action: 'delete', allowed: true, code: null, reason: null },
+            { action: 'set_mfa', allowed: true, code: null, reason: null }
+          ]
+        }
+      ];
+    };
+    setup({}, {}, odd);
+    await rowOf('Vertretungsplan');
+
+    const edit = screen.getByRole('button', { name: 'Bearbeiten: Vertretungsplan' });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAccessibleDescription('Gerade nicht bearbeitbar.');
+    expect(screen.getByRole('button', { name: 'Löschen: Vertretungsplan' })).toBeEnabled();
   });
 
   it('zeigt „Eigene Rolle nicht erweiterbar“ bei self_escalation', async () => {
@@ -268,14 +299,14 @@ describe('Rollen: loeschen', () => {
     }
   });
 
-  it('eine noch zugewiesene Rolle ist nicht loeschbar, die Begruendung nennt die Zahl der Konten', async () => {
+  it('eine noch zugewiesene Rolle ist nicht loeschbar, mit der Begruendung der API', async () => {
     setup();
     await rowOf('Fachschaft');
 
     const button = screen.getByRole('button', { name: 'Löschen: Fachschaft' });
 
     expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/noch 3 Konten zugewiesen/);
+    expect(button).toHaveAccessibleDescription(/noch Konten zugewiesen/);
   });
 
   it('zeigt role_in_use der API verstaendlich, wenn die Rolle inzwischen vergeben wurde', async () => {
@@ -291,7 +322,7 @@ describe('Rollen: loeschen', () => {
 
 describe('Rollen: ohne Recht roles.manage', () => {
   it('zeigt alle Schreibaktionen, aber deaktiviert, mit einer Begruendung', async () => {
-    setup({}, { canManage: false });
+    setup({}, { forbidden: true });
     await rowOf('Vertretungsplan');
 
     const buttons = [

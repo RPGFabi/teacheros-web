@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import RolesPage from './RolesPage';
 import { fakeClient } from '../test/fakeHttp';
+import { createBlock, role as baseRole } from '../test/roleFixtures';
 
 const CATALOG = [
   { key: 'accounts.view', name: 'Konten ansehen', group: 'Konten' },
@@ -10,16 +11,10 @@ const CATALOG = [
   { key: 'roles.assign', name: 'Rollen vergeben und entziehen', group: 'Rollen und Rechte' }
 ];
 
-const role = (over: Record<string, unknown>) => ({
-  id: 'r-' + over.key,
-  description: null,
-  permissions: [],
-  all_permissions: false,
-  requires_mfa: false,
-  protection: 'standard',
-  account_count: 0,
-  ...over
-});
+const KEYS = CATALOG.map((c) => c.key);
+/** Betrachter ohne roles.manage (nur lesend): die API sperrt jede Aktion. */
+const role = (over: Record<string, unknown>) => baseRole(over, { catalogKeys: KEYS, forbidden: true });
+const CREATE = createBlock({ catalogKeys: KEYS, forbidden: true });
 
 const ROLES = [
   role({ key: 'schuladmin', name: 'Schuladmin', description: 'Alle Rechte an der Schulinstanz.', permissions: ['accounts.view', 'roles.manage', 'roles.assign'], all_permissions: true, requires_mfa: true, protection: 'wildcard', account_count: 2 }),
@@ -29,7 +24,7 @@ const ROLES = [
 ];
 
 const routes = {
-  'GET /api/roles': { data: { roles: ROLES } },
+  'GET /api/roles': { data: { roles: ROLES, create: CREATE } },
   'GET /api/permissions': { data: { permissions: CATALOG } }
 };
 
@@ -84,7 +79,7 @@ describe('Rollen: Liste', () => {
     expect(within(await rowOf('Vertretungsplan')).getByText('Eigene Rolle')).toBeInTheDocument();
   });
 
-  it('ohne Recht „Rollen verwalten“ (Standard) sind alle Schreibaktionen deaktiviert und es gibt kein Formular', async () => {
+  it('ohne Recht „Rollen verwalten“ (laut API) sind alle Schreibaktionen deaktiviert und es gibt kein Formular', async () => {
     render(<RolesPage apiClient={fakeClient(routes).client} />);
 
     await rowOf('Schuladmin');
@@ -99,7 +94,7 @@ describe('Rollen: Liste', () => {
     let attempts = 0;
     const { client } = fakeClient({
       ...routes,
-      'GET /api/roles': () => (++attempts === 1 ? { status: 500 } : { data: { roles: ROLES } })
+      'GET /api/roles': () => (++attempts === 1 ? { status: 500 } : { data: { roles: ROLES, create: CREATE } })
     });
     render(<RolesPage apiClient={client} />);
 

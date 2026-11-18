@@ -2,14 +2,10 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import RoleForm, { type RolePayload } from './RoleForm';
-import { describeRoleFailure, permissionName, protectionLabel, type CatalogEntry, type RoleRow } from './roles';
+import { blockedReason, describeRoleFailure, permissionName, protectionLabel, type CatalogEntry, type CreateAction, type RoleAction, type RoleRow, type RolesResponse } from './roles';
 
 interface Props {
   apiClient: AxiosInstance;
-  /** Recht `roles.manage` aus GET /api/me; ohne es sind Anlegen, Bearbeiten und Loeschen sichtbar, aber deaktiviert. */
-  canManage?: boolean;
-  /** Effektive Rechte des Kontos aus GET /api/me: nur diese lassen sich Rollen hinzufuegen (P2). */
-  heldPermissions?: string[];
 }
 
 interface Editor {
@@ -20,10 +16,12 @@ interface Editor {
 /**
  * Seite „Rollen“: die Rollen der Schulinstanz (Ticket #32) und ihr Anlegen, Bearbeiten und Loeschen (Ticket #33).
  * Der Menuepunkt erscheint mit einem der drei Verwaltungsrechte, schreiben darf nur `roles.manage`.
- * Nicht erlaubte Aktionen bleiben sichtbar, aber deaktiviert, mit Begruendung; die API entscheidet endgueltig.
+ * Was der Betrachter darf, sagt die API je Aktion (`actions`, `permission_actions`, `create` in `GET /api/roles`):
+ * nicht erlaubte Aktionen bleiben sichtbar, aber deaktiviert, mit der Begruendung der API. Hier wird nichts nachgerechnet.
  */
-export default function RolesPage({ apiClient, canManage = false, heldPermissions = [] }: Props) {
+export default function RolesPage({ apiClient }: Props) {
   const [roles, setRoles] = useState<RoleRow[] | null>(null);
+  const [create, setCreate] = useState<CreateAction | null>(null);
   // Ohne Katalog (Ladefehler) zeigt die Liste die Schluessel statt der deutschen Namen.
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -33,11 +31,13 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const manageReasonId = useId();
+  // Ohne Auskunft der API (noch nicht geladen, Ladefehler) bleibt Anlegen gesperrt.
+  const createReason = blockedReason(create ?? undefined);
 
   const load = useCallback(async () => {
     setLoadError(false);
     const [rolesResult, catalogResult] = await Promise.allSettled([
-      apiClient.get<{ roles: RoleRow[] }>('/api/roles'),
+      apiClient.get<RolesResponse>('/api/roles'),
       apiClient.get<{ permissions: CatalogEntry[] }>('/api/permissions')
     ]);
     if (catalogResult.status === 'fulfilled') {
@@ -45,6 +45,7 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
     }
     if (rolesResult.status === 'fulfilled') {
       setRoles(rolesResult.value.data.roles);
+      setCreate(rolesResult.value.data.create ?? null);
     } else {
       setLoadError(true);
     }
@@ -96,16 +97,6 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
     );
   };
 
-  /** Begruendung, warum eine Aktion auf einer Rolle gerade nicht geht; `null` = erlaubt. */
-  const editBlocked = (role: RoleRow) =>
-    role.protection === 'wildcard' || role.protection === 'protected' ? 'Diese Rolle ist geschützt: Ihre Rechte liegen fest.' : null;
-  const deleteBlocked = (role: RoleRow) =>
-    role.protection !== 'custom'
-      ? 'Standardrollen lassen sich nicht löschen.'
-      : role.account_count > 0
-        ? `Die Rolle ist noch ${role.account_count} ${role.account_count === 1 ? 'Konto' : 'Konten'} zugewiesen.`
-        : null;
-
   const startEditor = (role: RoleRow | null) => {
     setNotice(null);
     setError(null);
@@ -117,16 +108,16 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
       <h1>Rollen</h1>
       <p>
         <Button
-          disabled={!canManage || busy}
-          aria-describedby={canManage ? undefined : manageReasonId}
+          disabled={createReason !== null || busy}
+          aria-describedby={createReason === null ? undefined : manageReasonId}
           onClick={() => startEditor(null)}
         >
           Rolle anlegen
         </Button>
       </p>
-      {!canManage && (
+      {createReason !== null && (
         <p id={manageReasonId}>
-          <small>Zum Anlegen, Bearbeiten und Löschen von Rollen brauchen Sie das Recht „Rollen verwalten“.</small>
+          <small>{createReason}</small>
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
@@ -136,7 +127,8 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
           key={editor.role?.id ?? 'neu'}
           role={editor.role}
           catalog={catalog}
-          heldPermissions={heldPermissions}
+          permissionActions={editor.role ? editor.role.permission_actions : (create?.permission_actions ?? [])}
+          mfaAction={editor.role ? (editor.role.actions.find((a) => a.action === 'set_mfa') ?? REFUSED) : null}
           busy={busy}
           onSubmit={(payload) => void save(editor.role, payload)}
           onCancel={() => setEditor(null)}
@@ -198,11 +190,9 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
                   <td>
                     <RoleActions
                       role={role}
-                      canManage={canManage}
                       busy={busy}
-                      manageReasonId={manageReasonId}
-                      editReason={editBlocked(role)}
-                      deleteReason={deleteBlocked(role)}
+                      editReason={blockedReason(findAction(role, 'edit'))}
+                      deleteReason={blockedReason(findAction(role, 'delete'))}
                       onEdit={() => startEditor(role)}
                       onDelete={() => setDeleting(role)}
                     />
@@ -217,45 +207,46 @@ export default function RolesPage({ apiClient, canManage = false, heldPermission
   );
 }
 
+const findAction = (role: RoleRow, action: RoleAction['action']) => role.actions.find((a) => a.action === action);
+const REFUSED = { allowed: false, code: null, reason: null };
+
 interface ActionsProps {
   role: RoleRow;
-  canManage: boolean;
   busy: boolean;
-  manageReasonId: string;
+  /** Begruendung der API, warum Bearbeiten bzw. Loeschen gesperrt ist; `null` = erlaubt. */
   editReason: string | null;
   deleteReason: string | null;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-/** Bearbeiten und Loeschen einer Rolle; eine gesperrte Aktion bleibt stehen, mit Begruendung darunter. */
-function RoleActions({ role, canManage, busy, manageReasonId, editReason, deleteReason, onEdit, onDelete }: ActionsProps) {
+/** Bearbeiten und Loeschen einer Rolle; eine gesperrte Aktion bleibt stehen, mit Begruendung der API darunter. */
+function RoleActions({ role, busy, editReason, deleteReason, onEdit, onDelete }: ActionsProps) {
   const id = useId();
-  const reasonFor = (reason: string | null, own: string) => (!canManage ? manageReasonId : reason ? own : undefined);
   return (
     <>
       <Button
         variant="secondary"
-        disabled={!canManage || busy || editReason !== null}
+        disabled={busy || editReason !== null}
         aria-label={`Bearbeiten: ${role.name}`}
-        aria-describedby={reasonFor(editReason, `${id}-edit`)}
+        aria-describedby={editReason ? `${id}-edit` : undefined}
         onClick={onEdit}
       >
         Bearbeiten
       </Button>{' '}
       <Button
         variant="secondary"
-        disabled={!canManage || busy || deleteReason !== null}
+        disabled={busy || deleteReason !== null}
         aria-label={`Löschen: ${role.name}`}
-        aria-describedby={reasonFor(deleteReason, `${id}-delete`)}
+        aria-describedby={deleteReason ? `${id}-delete` : undefined}
         onClick={onDelete}
       >
         Löschen
       </Button>
-      {canManage && editReason && (
+      {editReason && (
         <small id={`${id}-edit`} style={{ display: 'block' }}>{editReason}</small>
       )}
-      {canManage && deleteReason && (
+      {deleteReason && (
         <small id={`${id}-delete`} style={{ display: 'block' }}>{deleteReason}</small>
       )}
     </>

@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Button, Card, Checkbox, FormField, TextInput } from '@hoelzle/react-ui';
-import { groupCatalog, type CatalogEntry, type RoleRow } from './roles';
+import { blockedReason, groupCatalog, type CatalogEntry, type Outcome, type PermissionGrant, type RoleRow } from './roles';
 
 export interface RolePayload {
   name: string;
@@ -14,8 +14,10 @@ interface Props {
   /** `null` = neue Rolle anlegen. */
   role: RoleRow | null;
   catalog: CatalogEntry[];
-  /** Effektive Rechte des angemeldeten Kontos (P2: nur diese lassen sich hinzufuegen). */
-  heldPermissions: string[];
+  /** Aus der API (`permission_actions` der Rolle bzw. von `create`): je Recht, ob der Betrachter es hinzufuegen darf. */
+  permissionActions: PermissionGrant[];
+  /** Aus der API (Aktion `set_mfa`): ob das MFA-Merkmal aenderbar ist; `null` bei einer neuen Rolle (immer aenderbar). */
+  mfaAction: Outcome | null;
   busy: boolean;
   onSubmit: (payload: RolePayload) => void;
   onCancel: () => void;
@@ -23,18 +25,17 @@ interface Props {
 
 /**
  * Formular zum Anlegen und Bearbeiten einer Rolle (Ticket #33): Name, Beschreibung, Rechte als gruppierte
- * Checkboxen aus dem Katalog, „Erfordert MFA“. Nicht erlaubte Eingaben bleiben sichtbar, aber deaktiviert, mit Begruendung;
- * die API prueft alles noch einmal.
+ * Checkboxen aus dem Katalog, „Erfordert MFA“. Was nicht erlaubt ist, bleibt sichtbar, aber deaktiviert, mit der
+ * Begruendung der API; entschieden wird dort, hier wird nichts nachgerechnet.
  */
-export default function RoleForm({ role, catalog, heldPermissions, busy, onSubmit, onCancel }: Props) {
+export default function RoleForm({ role, catalog, permissionActions, mfaAction, busy, onSubmit, onCancel }: Props) {
   const ids = useId();
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
   const [selected, setSelected] = useState<string[]>(role?.permissions ?? []);
   const [requiresMfa, setRequiresMfa] = useState(role?.requires_mfa ?? true);
 
-  const mfaFixed = role !== null && role.protection !== 'custom';
-  const original = role?.permissions ?? [];
+  const mfaReason = mfaAction === null ? null : blockedReason(mfaAction);
   const title = role ? `Rolle bearbeiten: ${role.name}` : 'Rolle anlegen';
   const catalogMissing = catalog.length === 0;
 
@@ -46,7 +47,7 @@ export default function RoleForm({ role, catalog, heldPermissions, busy, onSubmi
       name: name.trim(),
       description: description.trim() === '' ? null : description.trim(),
       permissions: catalog.filter((entry) => selected.includes(entry.key)).map((entry) => entry.key),
-      ...(!mfaFixed && { requires_mfa: requiresMfa })
+      ...(mfaReason === null && { requires_mfa: requiresMfa })
     });
   };
 
@@ -67,8 +68,9 @@ export default function RoleForm({ role, catalog, heldPermissions, busy, onSubmi
             <fieldset key={group}>
               <legend>{group}</legend>
               {entries.map((entry) => {
-                // Abwaehlen geht immer; neu setzen nur mit eigenem Besitz des Rechts (P2).
-                const locked = !heldPermissions.includes(entry.key) && !original.includes(entry.key);
+                // Abwaehlen geht immer; fuer ein noch fehlendes Recht sagt die API, ob es hinzugefuegt werden darf.
+                const reason = blockedReason(permissionActions.find((p) => p.permission === entry.key) ?? { allowed: true, code: null, reason: null });
+                const locked = reason !== null && !selected.includes(entry.key);
                 const reasonId = `${ids}-${entry.key}-reason`;
                 return (
                   <div key={entry.key}>
@@ -79,7 +81,7 @@ export default function RoleForm({ role, catalog, heldPermissions, busy, onSubmi
                       aria-describedby={locked ? reasonId : undefined}
                       onChange={() => toggle(entry.key)}
                     />
-                    {locked && <small id={reasonId}>Sie besitzen dieses Recht nicht und können es daher nicht vergeben.</small>}
+                    {locked && <small id={reasonId}>{reason}</small>}
                   </div>
                 );
               })}
@@ -90,11 +92,11 @@ export default function RoleForm({ role, catalog, heldPermissions, busy, onSubmi
           <Checkbox
             label="Erfordert MFA"
             checked={requiresMfa}
-            disabled={mfaFixed}
-            aria-describedby={mfaFixed ? `${ids}-mfa-reason` : undefined}
+            disabled={mfaReason !== null}
+            aria-describedby={mfaReason !== null ? `${ids}-mfa-reason` : undefined}
             onChange={() => setRequiresMfa((value) => !value)}
           />
-          {mfaFixed && <small id={`${ids}-mfa-reason`}>Bei Standardrollen fest vorgegeben.</small>}
+          {mfaReason !== null && <small id={`${ids}-mfa-reason`}>{mfaReason}</small>}
         </div>
         <p>
           <Button type="submit" disabled={busy || catalogMissing || name.trim() === ''}>{role ? 'Speichern' : 'Anlegen'}</Button>{' '}
