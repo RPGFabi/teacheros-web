@@ -210,8 +210,11 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     );
   }
 
-  const held = access.role_actions.filter((a) => a.action === 'revoke');
-  const available = access.role_actions.filter((a) => a.action === 'assign');
+  // Rollen und Rechte liefert die API nur mit einem der drei Verwaltungsrechte; sonst zeigt die Ansicht nur das Konto.
+  const { permissions, role_actions: roleActions, permission_actions: permissionActions } = access;
+  const showsAccess = permissions !== undefined && roleActions !== undefined && permissionActions !== undefined;
+  const held = (roleActions ?? []).filter((a) => a.action === 'revoke');
+  const available = (roleActions ?? []).filter((a) => a.action === 'assign');
 
   const roleRow = (role: RoleAction, label: string) => {
     const blocked = !canAssign ? NO_RIGHT_REASON : role.allowed ? null : (role.reason ?? 'Diese Aktion ist nicht erlaubt.');
@@ -246,7 +249,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const accountName = access.account.email ?? access.account.login_name;
 
   const permissionRow = (item: PermissionAction) => {
-    const row = access.permissions.find((p) => p.key === item.permission);
+    const row = permissions?.find((p) => p.key === item.permission);
     const blocked = !canAssignPermissions ? NO_PERMISSION_RIGHT_REASON : item.allowed ? null : (item.reason ?? 'Diese Aktion ist nicht erlaubt.');
     const hintId = `permission-hint-${item.permission}`;
     const verb = PERMISSION_VERBS[item.action];
@@ -355,40 +358,44 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
         onConfirm={() => void deactivate()}
         onCancel={() => setConfirmingDeactivation(false)}
       />
-      <Card>
-        <section aria-label="Rollen">
-          <h2>Rollen</h2>
-          {held.length === 0 ? <p>Dieses Konto hat keine Rolle.</p> : <ul>{held.map((role) => roleRow(role, 'Rolle entziehen'))}</ul>}
-          {available.length > 0 && (
-            <>
-              <h3>Weitere Rollen</h3>
-              <ul>{available.map((role) => roleRow(role, 'Rolle hinzufügen'))}</ul>
-            </>
-          )}
-        </section>
-      </Card>
-      <Card>
-        <section aria-label="Effektive Rechte">
-          <h2>Effektive Rechte</h2>
-          <EffectivePermissions permissions={access.permissions} />
-        </section>
-      </Card>
-      <Card>
-        <section aria-label="Einzelrechte">
-          <h2>Einzelrechte</h2>
-          <p>Einzelrechte gelten zusätzlich zu den Rollen oder entziehen ein Recht trotz Rolle. Konten mit der Rolle Schuladmin oder Schüler/in haben keine.</p>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Recht</th>
-                <th scope="col">Herkunft</th>
-                <th scope="col">Aktion</th>
-              </tr>
-            </thead>
-            <tbody>{access.permission_actions.map(permissionRow)}</tbody>
-          </table>
-        </section>
-      </Card>
+      {showsAccess && (
+        <>
+        <Card>
+          <section aria-label="Rollen">
+            <h2>Rollen</h2>
+            {held.length === 0 ? <p>Dieses Konto hat keine Rolle.</p> : <ul>{held.map((role) => roleRow(role, 'Rolle entziehen'))}</ul>}
+            {available.length > 0 && (
+              <>
+                <h3>Weitere Rollen</h3>
+                <ul>{available.map((role) => roleRow(role, 'Rolle hinzufügen'))}</ul>
+              </>
+            )}
+          </section>
+        </Card>
+        <Card>
+          <section aria-label="Effektive Rechte">
+            <h2>Effektive Rechte</h2>
+            <EffectivePermissions permissions={permissions ?? []} />
+          </section>
+        </Card>
+        <Card>
+          <section aria-label="Einzelrechte">
+            <h2>Einzelrechte</h2>
+            <p>Einzelrechte gelten zusätzlich zu den Rollen oder entziehen ein Recht trotz Rolle. Konten mit der Rolle Schuladmin oder Schüler/in haben keine.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Recht</th>
+                  <th scope="col">Herkunft</th>
+                  <th scope="col">Aktion</th>
+                </tr>
+              </thead>
+              <tbody>{(permissionActions ?? []).map(permissionRow)}</tbody>
+            </table>
+          </section>
+        </Card>
+        </>
+      )}
     </main>
   );
 }

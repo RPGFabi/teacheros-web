@@ -54,7 +54,9 @@ export interface AccountAction {
 
 /**
  * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
- * Verwaltungsrecht); nur dann liefert sie auch E-Mail, Anmeldename und Status.
+ * Verwaltungsrecht oder `accounts.deactivate`); nur dann liefert sie auch E-Mail, Anmeldename und Status. Rollen und Rechte
+ * (`roles`, `permissions`, `role_actions`, `permission_actions`) liefert die API nur, wenn der Betrachter eines der drei
+ * Verwaltungsrechte hat; sonst fehlen sie, und die Ansicht zeigt nur das Konto.
  */
 export interface AccountAccess {
   account: {
@@ -70,10 +72,10 @@ export interface AccountAccess {
     login_sync_pending?: boolean;
     mfa_required: boolean;
   };
-  roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
-  permissions: PermissionRow[];
-  role_actions: RoleAction[];
-  permission_actions: PermissionAction[];
+  roles?: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
+  permissions?: PermissionRow[];
+  role_actions?: RoleAction[];
+  permission_actions?: PermissionAction[];
   account_actions: AccountAction[];
 }
 

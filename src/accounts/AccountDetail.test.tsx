@@ -90,6 +90,17 @@ describe('Kontodetail: Lesesicht', () => {
     expect(screen.getByText('Dieses Konto hat keine Rolle.')).toBeInTheDocument();
   });
 
+  it('blendet Rollen, Rechte und Einzelrechte aus, wenn die API sie dem Betrachter nicht liefert (nur accounts.deactivate)', async () => {
+    const { account, account_actions } = ACCESS;
+    mount({ [path]: { data: { account, account_actions } } });
+
+    expect(await screen.findByRole('heading', { name: /ziel@schule.test/ })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Konto' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Rollen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Effektive Rechte' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Einzelrechte' })).not.toBeInTheDocument();
+  });
+
   it('meldet ein unbekanntes Konto verstaendlich', async () => {
     mount({ [path]: { status: 404, data: { error: 'x', code: 'account_not_found' } } });
 
