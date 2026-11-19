@@ -10,6 +10,9 @@ import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/client';
 import { errorCode } from './api/errors';
 
+/** Hinweis auf der Anmeldeseite nach dem eigenen Sitzungswiderruf (Ticket #50). */
+const SESSIONS_REVOKED_NOTICE = 'Alle Sitzungen wurden beendet.';
+
 export default function App({
   apiClient = defaultApiClient,
   authClient = defaultAuthClient,
@@ -95,7 +98,7 @@ export default function App({
         ))}
       </nav>
       {portal.id === 'account' ? (
-        <AccountPage me={me} error={meError} />
+        <AccountPage me={me} error={meError} apiClient={apiClient} onSessionsRevoked={() => onReauthenticate(SESSIONS_REVOKED_NOTICE)} />
       ) : portal.id === 'accounts' ? (
         <AccountsPage
           apiClient={apiClient}
