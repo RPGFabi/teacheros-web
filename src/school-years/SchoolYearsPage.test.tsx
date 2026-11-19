@@ -221,3 +221,163 @@ describe('Schuljahre: Detailansicht mit Klassen (Ticket #55)', () => {
     expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ school_year_id: 'sy-2', grade_level: 7, name: '7b' });
   });
 });
+
+describe('Schuljahre: Bearbeiten und Löschen (Ticket #56)', () => {
+  const setup = (extra: Record<string, Parameters<typeof fakeClient>[0][string]> = {}, canManage = true) => {
+    let years: Array<typeof Y2526> = [Y2526, Y2627];
+    const { client, calls } = fakeClient({
+      'GET /api/school-years': () => ({ data: { school_years: years } }),
+      'POST /api/school-years/sy-2/update': (call: FakeCall) => {
+        const body = call.data as { starts_on: string; ends_on: string };
+        const updated = { ...Y2627, ...body, name: `${body.starts_on.slice(0, 4)}/${body.ends_on.slice(2, 4)}` };
+        years = years.map((y) => (y.id === 'sy-2' ? updated : y));
+        return { data: { school_year: updated } };
+      },
+      'POST /api/school-years/sy-2/delete': () => {
+        years = years.filter((y) => y.id !== 'sy-2');
+        return { data: { deleted: true, id: 'sy-2' } };
+      },
+      ...extra
+    });
+    render(<SchoolYearsPage apiClient={client} canManage={canManage} />);
+    return { calls, writes: () => calls.filter((c) => c.method !== 'GET') };
+  };
+
+  const openEditor = async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Bearbeiten: 2026/27' }));
+    return screen.getByRole('form', { name: 'Schuljahr bearbeiten' });
+  };
+
+  it('zeigt Bearbeiten und Löschen je Schuljahr nur mit dem Recht Schuljahre verwalten', async () => {
+    setup({}, false);
+    await screen.findByRole('rowheader', { name: '2026/27' });
+
+    expect(screen.queryByRole('button', { name: /^Bearbeiten:/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Löschen:/ })).not.toBeInTheDocument();
+  });
+
+  it('öffnet das Formular mit dem bisherigen Zeitraum und der Vorschau der Bezeichnung, ohne Eingabe dafür', async () => {
+    setup();
+
+    const form = await openEditor();
+
+    expect(within(form).getByLabelText('Beginn')).toHaveValue('2026-09-14');
+    expect(within(form).getByLabelText('Ende')).toHaveValue('2027-07-29');
+    expect(within(form).getByText('2026/27', { selector: 'output' })).toBeInTheDocument();
+    expect(within(form).queryByLabelText(/Bezeichnung/)).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Schuljahr anlegen' })).toBeInTheDocument();
+  });
+
+  it('speichert den neuen Zeitraum, meldet die neue Bezeichnung, lädt neu und schließt das Formular', async () => {
+    const { writes } = setup();
+    const form = await openEditor();
+
+    const start = within(form).getByLabelText('Beginn');
+    await userEvent.clear(start);
+    await userEvent.type(start, '2027-09-01');
+    const end = within(form).getByLabelText('Ende');
+    await userEvent.clear(end);
+    await userEvent.type(end, '2028-07-31');
+    expect(within(form).getByText('2027/28', { selector: 'output' })).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toMatchObject({ method: 'POST', url: '/api/school-years/sy-2/update', data: { starts_on: '2027-09-01', ends_on: '2028-07-31' } });
+    expect(Object.keys(writes()[0].data as object).sort()).toEqual(['ends_on', 'starts_on']);
+    expect(await screen.findByRole('status')).toHaveTextContent('Schuljahr 2027/28 gespeichert.');
+    expect(await screen.findByRole('rowheader', { name: '2027/28' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Schuljahr bearbeiten' })).not.toBeInTheDocument();
+  });
+
+  it('warnt bei einem Ende außerhalb des Folgejahres und sperrt das Speichern', async () => {
+    const { writes } = setup();
+    const form = await openEditor();
+
+    const end = within(form).getByLabelText('Ende');
+    await userEvent.clear(end);
+    await userEvent.type(end, '2026-12-31');
+
+    expect(within(form).getByText('Das Ende muss im Kalenderjahr nach dem Beginn liegen.')).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Speichern' })).toBeDisabled();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('Abbrechen schließt das Formular, ohne etwas zu schreiben', async () => {
+    const { writes } = setup();
+    const form = await openEditor();
+
+    await userEvent.click(within(form).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('form', { name: 'Schuljahr bearbeiten' })).not.toBeInTheDocument();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('übersetzt die Ablehnung wegen Überschneidung, behält das Formular und lädt neu', async () => {
+    const { calls } = setup({ 'POST /api/school-years/sy-2/update': { status: 409, data: { error: 'x', code: 'school_year_overlap' } } });
+    const form = await openEditor();
+
+    const start = within(form).getByLabelText('Beginn');
+    await userEvent.clear(start);
+    await userEvent.type(start, '2026-07-01');
+    await userEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('überschneidet sich mit einem bestehenden Schuljahr');
+    expect(screen.getByRole('form', { name: 'Schuljahr bearbeiten' })).toBeInTheDocument();
+    expect(within(form).getByLabelText('Beginn')).toHaveValue('2026-07-01');
+    await waitFor(() => expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2));
+  });
+
+  it('zeigt den Einwand eines anderen Moduls mit dessen Meldung, wenn der Code unbekannt ist', async () => {
+    setup({ 'POST /api/school-years/sy-2/update': { status: 409, data: { error: 'Der Stundenplan ist veröffentlicht.', code: 'timetable_published' } } });
+    const form = await openEditor();
+
+    await userEvent.click(within(form).getByRole('button', { name: 'Speichern' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Der Stundenplan ist veröffentlicht.');
+  });
+
+  it('löscht nach Bestätigung und meldet es', async () => {
+    const { writes } = setup();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Löschen: 2026/27' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Schuljahr „2026/27“ löschen?');
+    expect(writes()).toHaveLength(0);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Löschen' }));
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toMatchObject({ method: 'POST', url: '/api/school-years/sy-2/delete' });
+    expect(await screen.findByRole('status')).toHaveTextContent('Schuljahr 2026/27 gelöscht.');
+    await waitFor(() => expect(screen.queryByRole('rowheader', { name: '2026/27' })).not.toBeInTheDocument());
+  });
+
+  it('Abbrechen im Dialog löscht nichts', async () => {
+    const { writes } = setup();
+    await userEvent.click(await screen.findByRole('button', { name: 'Löschen: 2026/27' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('erklärt die Ablehnung, weil das Schuljahr Klassen hat (auch archivierte), und lädt neu', async () => {
+    const { calls } = setup({ 'POST /api/school-years/sy-2/delete': { status: 409, data: { error: 'x', code: 'school_year_has_classes' } } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Löschen: 2026/27' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Löschen' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('hat Klassen, auch archivierte');
+    expect(screen.getByRole('rowheader', { name: '2026/27' })).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2));
+  });
+
+  it('zeigt bei einem unbekannten Fehler den allgemeinen Text zum Löschen', async () => {
+    setup({ 'POST /api/school-years/sy-2/delete': { status: 500 } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Löschen: 2026/27' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Löschen' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das Schuljahr konnte nicht gelöscht werden');
+  });
+});

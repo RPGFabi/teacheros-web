@@ -58,3 +58,22 @@ describe('Fehlertexte des Anlegens', () => {
     expect(describeSchoolYearFailure(new Error('netz'))).toMatch(/konnte nicht angelegt werden/);
   });
 });
+
+describe('Fehlertexte beim Bearbeiten und Löschen (Ticket #56)', () => {
+  const err = (code: string, error = 'x', status = 409) => ({ response: { status, data: { error, code } } });
+
+  it('erklärt die Sperre wegen Klassen beim Löschen und das fehlende Schuljahr', () => {
+    expect(describeSchoolYearFailure(err('school_year_has_classes'), 'delete')).toMatch(/hat Klassen, auch archivierte/);
+    expect(describeSchoolYearFailure(err('school_year_in_use'), 'delete')).toMatch(/wird noch verwendet/);
+    expect(describeSchoolYearFailure(err('school_year_not_found', 'x', 404), 'update')).toMatch(/gibt es nicht mehr/);
+  });
+
+  it('zeigt die Meldung der API, wenn ein anderes Modul Einwand erhebt (unbekannter Code mit 409)', () => {
+    expect(describeSchoolYearFailure(err('timetable_published', 'Der Stundenplan ist veröffentlicht.'), 'update')).toBe('Der Stundenplan ist veröffentlicht.');
+  });
+
+  it('benennt in der allgemeinen Meldung die Aktion', () => {
+    expect(describeSchoolYearFailure(err('boom', 'x', 500), 'update')).toMatch(/konnte nicht gespeichert werden/);
+    expect(describeSchoolYearFailure(err('boom', 'x', 500), 'delete')).toMatch(/konnte nicht gelöscht werden/);
+  });
+});
