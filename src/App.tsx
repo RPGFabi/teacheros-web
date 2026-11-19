@@ -6,6 +6,7 @@ import AccountPage, { type Me } from './account/AccountPage';
 import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
+import SchoolYearsPage from './school-years/SchoolYearsPage';
 import { apiClient as defaultApiClient } from './api/client';
 
 export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
@@ -72,6 +73,8 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         />
       ) : portal.id === 'roles' ? (
         <RolesPage apiClient={apiClient} />
+      ) : portal.id === 'school-years' ? (
+        <SchoolYearsPage apiClient={apiClient} canManage={hasPermission(me, 'school_years.manage')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
