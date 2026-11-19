@@ -43,10 +43,10 @@ export interface PermissionAction {
 
 /**
  * Eine Aktion am Konto selbst (Ticket #41: `deactivate`; Ticket #42: `resync_login` = „Abgleich wiederholen“, nur solange
- * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten); gesperrt mit Code und deutscher Begruendung.
+ * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten; Ticket #48: `revoke_sessions` = Sitzungen beenden); gesperrt mit Code und deutscher Begruendung.
  */
 export interface AccountAction {
-  action: 'deactivate' | 'resync_login' | 'reactivate';
+  action: 'deactivate' | 'resync_login' | 'reactivate' | 'revoke_sessions';
   allowed: boolean;
   code: string | null;
   reason: string | null;
@@ -54,8 +54,8 @@ export interface AccountAction {
 
 /**
  * Ein offener Aufruf an den Anmeldedienst („Abgleich offen“, Ticket #47): eine lokal schon wirksame Aenderung, die der
- * Dienst noch nicht bestaetigt hat. `operation` ist heute `disable_login` (Sperre); Widerruf (`revoke_sessions`) und
- * Zuruecksetzung (`reset_mfa`) folgen. `rejection_code` ist der Code der letzten fachlichen Ablehnung, null bei
+ * Dienst noch nicht bestaetigt hat. `operation` ist `disable_login` (Sperre) oder `revoke_sessions` (Sitzungswiderruf, Ticket #48); die
+ * Zuruecksetzung (`reset_mfa`) folgt. `rejection_code` ist der Code der letzten fachlichen Ablehnung, null bei
  * Nichterreichbarkeit.
  */
 export interface OpenCall {
@@ -65,7 +65,7 @@ export interface OpenCall {
 
 /**
  * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
- * Verwaltungsrecht oder `accounts.deactivate`); nur dann liefert sie auch E-Mail, Anmeldename und Status. Rollen und Rechte
+ * Verwaltungsrecht, `accounts.deactivate` oder `accounts.revoke_sessions`); nur dann liefert sie auch E-Mail, Anmeldename und Status. Rollen und Rechte
  * (`roles`, `permissions`, `role_actions`, `permission_actions`) liefert die API nur, wenn der Betrachter eines der drei
  * Verwaltungsrechte hat; sonst fehlen sie, und die Ansicht zeigt nur das Konto.
  */

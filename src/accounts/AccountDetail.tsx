@@ -17,6 +17,7 @@ interface Props {
 }
 
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
+const REVOCATION_PENDING_NOTICE = 'Sitzungen beendet. Der Anmeldedienst hat das noch nicht bestätigt; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab. Wiederholen Sie den Abgleich im Abschnitt „Konto“.';
 const NO_OPEN_CALLS: never[] = [];
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
@@ -38,6 +39,9 @@ const PERMISSION_VERBS = {
  * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
  * Reaktivierung (Ticket #43): bei einem deaktivierten Konto steht im Abschnitt „Konto“ „Reaktivieren“ (Aktion `reactivate`,
  * gesperrt sichtbar mit Begruendung); die API ruft zuerst den Anmeldedienst, bei Fehlschlag bleibt das Konto deaktiviert.
+ * Sitzungen beenden (Ticket #48): „Sitzungen beenden …“ mit Bestaetigungsdialog im Abschnitt „Konto“ (Aktion `revoke_sessions`, gesperrt
+ * sichtbar mit Begruendung); das Konto bleibt aktiv, nur alle Sitzungen enden. Ist der Anmeldedienst nicht erreichbar, bleibt der
+ * Widerruf als offener Aufruf bestehen (`open_calls`) und die Ansicht nennt das.
  * Abgleich mit dem Anmeldedienst (Tickets #42, #47): ist ein Aufruf dort noch offen (`open_calls`, z. B. die Deaktivierung), steht im
  * Abschnitt „Konto“ je offenem Aufruf ein Satz mit dem Grund der Ablehnung und einmal „Abgleich wiederholen“ (Aktion
  * `resync_login`, holt alle nach; gesperrt sichtbar ohne Recht).
@@ -49,6 +53,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
+  const [confirmingRevocation, setConfirmingRevocation] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -100,6 +105,15 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   function deactivate() {
     setConfirmingDeactivation(false);
     return perform('deactivate', () => post('deactivate'), (data) => (data.account.open_calls?.length ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
+  }
+
+  function revokeSessions() {
+    setConfirmingRevocation(false);
+    return perform(
+      'revoke',
+      () => post('revoke-sessions'),
+      (data) => (data.account.open_calls?.some((call) => call.operation === 'revoke_sessions') ? REVOCATION_PENDING_NOTICE : 'Alle Sitzungen beendet.')
+    );
   }
 
   const reactivate = () => perform('reactivate', () => post('reactivate'), () => 'Konto reaktiviert.');
@@ -158,6 +172,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
 
   const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
   const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const revocation = access.account_actions.find((a) => a.action === 'revoke_sessions');
+  const revocationBlocked = revocation?.allowed ? null : (revocation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
   const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const openCalls = access.account.open_calls ?? NO_OPEN_CALLS;
@@ -224,6 +240,25 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
               {deactivationBlocked}
             </small>
           )}
+          {revocation && (
+            <>
+              <h3>Sitzungen beenden</h3>
+              <p>Beendet alle Sitzungen des Kontos auf allen Geräten, etwa nach einem Geräteverlust. Das Konto bleibt aktiv; die Person meldet sich danach neu an.</p>
+              <Button
+                variant="secondary"
+                disabled={busy || revocationBlocked !== null}
+                aria-describedby={revocationBlocked ? 'revoke-hint' : undefined}
+                onClick={() => setConfirmingRevocation(true)}
+              >
+                Sitzungen beenden …
+              </Button>
+              {revocationBlocked && (
+                <small id="revoke-hint" style={{ display: 'block' }}>
+                  {revocationBlocked}
+                </small>
+              )}
+            </>
+          )}
           {reactivation && (
             <>
               <h3>Konto reaktivieren</h3>
@@ -279,6 +314,15 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
         variant="danger"
         onConfirm={() => void deactivate()}
         onCancel={() => setConfirmingDeactivation(false)}
+      />
+      <ConfirmDialog
+        open={confirmingRevocation}
+        title={`Sitzungen von „${accountName}“ beenden?`}
+        description="Alle Sitzungen des Kontos enden sofort, auch auf anderen Geräten. Das Konto bleibt aktiv, Rollen und Daten bleiben erhalten; die Person muss sich neu anmelden."
+        confirmText="Sitzungen beenden"
+        variant="danger"
+        onConfirm={() => void revokeSessions()}
+        onCancel={() => setConfirmingRevocation(false)}
       />
       {showsAccess && (
         <>

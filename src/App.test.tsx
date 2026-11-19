@@ -104,7 +104,7 @@ describe('Seite Konten in der App-Schale', () => {
     expect(screen.queryByRole('button', { name: /Rollen und Rechte/ })).not.toBeInTheDocument();
   });
 
-  it.each(['roles.manage', 'roles.assign', 'permissions.assign', 'accounts.deactivate'])('bietet mit %s die Detailansicht eines Kontos an', async (permission) => {
+  it.each(['roles.manage', 'roles.assign', 'permissions.assign', 'accounts.deactivate', 'accounts.revoke_sessions'])('bietet mit %s die Detailansicht eines Kontos an', async (permission) => {
     await openAccounts(['accounts.view', permission]);
 
     expect(screen.getByRole('button', { name: 'Rollen und Rechte: neu@schule.test' })).toBeInTheDocument();
