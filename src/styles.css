@@ -118,3 +118,13 @@ h1 {
   /* Die gemeinsamen Raender der Karten sind die Schnittlinien. */
   .invitation-card { border: 0.1mm solid #000; }
 }
+
+/* Wiederherstellungscodes nach der MFA-Einrichtung (Ticket #15): zwei Spalten, gut abschreibbar. */
+.recovery-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 1.05rem;
+}

@@ -6,7 +6,8 @@ export interface Me {
   account: { id: string; status: string; mfa_required: boolean };
   /** Effektive Rechte, fertig aufgeloest von der API (nie eine Wildcard). */
   permissions: string[];
-  session: { used_mfa: boolean; expires_at: string };
+  /** `mfa_enrollment_required`: MFA-Pflicht, aber ohne zweiten Faktor angemeldet (ADR 0002 B3); fachliche Routen sind gesperrt. */
+  session: { used_mfa: boolean; expires_at: string; mfa_enrollment_required?: boolean };
 }
 
 export default function AccountPage({ me, error }: { me: Me | null; error: string | null }) {

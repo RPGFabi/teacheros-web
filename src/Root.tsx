@@ -8,7 +8,7 @@ import { useSessionEndGuard } from './auth/useSessionEndGuard';
 import InvitationPage from './invitation/InvitationPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/client';
 
-function Gate({ apiClient, notice }: { apiClient: AxiosInstance; notice?: string }) {
+function Gate({ apiClient, authClient, notice }: { apiClient: AxiosInstance; authClient: AxiosInstance; notice?: string }) {
   const { isAuthReady, isAuthenticated, logout } = useAuth();
   // Hinweis, warum die laufende Sitzung beendet wurde (nur bei Sperre; bei widerrufener Sitzung keiner).
   const [sessionNotice, setSessionNotice] = useState<string | undefined>();
@@ -23,7 +23,18 @@ function Gate({ apiClient, notice }: { apiClient: AxiosInstance; notice?: string
 
   if (!isAuthReady) return <p className="content">Wird geladen …</p>;
   if (!isAuthenticated) return <LoginPage notice={sessionNotice ?? notice} />;
-  return <App apiClient={apiClient} initialPortal="account" />;
+  return (
+    <App
+      apiClient={apiClient}
+      authClient={authClient}
+      initialPortal="account"
+      onReauthenticate={(text) => {
+        // Nach der MFA-Einrichtung (Ticket #15): neu anmelden, damit das Token den zweiten Faktor traegt.
+        setSessionNotice(text);
+        void logout();
+      }}
+    />
+  );
 }
 
 export default function Root({
@@ -55,7 +66,7 @@ export default function Root({
 
   return (
     <AuthProvider authClient={authClient} apiClients={clients} sessionHintKey="teacheros_has_session">
-      <Gate apiClient={apiClient} notice={accepted ? 'Ihr Passwort ist gesetzt. Bitte melden Sie sich jetzt an.' : undefined} />
+      <Gate apiClient={apiClient} authClient={authClient} notice={accepted ? 'Ihr Passwort ist gesetzt. Bitte melden Sie sich jetzt an.' : undefined} />
     </AuthProvider>
   );
 }
