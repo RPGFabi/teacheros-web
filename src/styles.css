@@ -130,3 +130,6 @@ h1 {
   .responsive-table td[data-label] { display: flex; justify-content: space-between; gap: 12px; }
   .responsive-table td[data-label]::before { content: attr(data-label); color: #8ab4ff; }
 }
+
+/* Bezeichnung in der Schuljahr-Liste, die die Detailansicht oeffnet (Ticket #55): sieht aus wie Text mit Link-Farbe */
+.link-button { background: none; border: 0; padding: 0; font: inherit; color: #8ab4ff; text-decoration: underline; cursor: pointer; }

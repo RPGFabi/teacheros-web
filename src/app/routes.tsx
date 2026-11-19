@@ -2,7 +2,7 @@ import type { Me } from '../account/AccountPage';
 import { ADMINISTRATION_PERMISSIONS, hasPermission } from '../account/permissions';
 import { isModuleActive, type ModuleId } from './modules';
 
-export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'school-years' | 'account';
+export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'school-years' | 'classes' | 'account';
 
 export interface Portal {
   id: PortalId;
@@ -64,6 +64,13 @@ export const portals: Portal[] = [
     path: '#/schuljahre',
     description: 'Schuljahre der Schulinstanz.',
     requires: 'school_years.view'
+  },
+  {
+    id: 'classes',
+    label: 'Klassen',
+    path: '#/klassen',
+    description: 'Klassen je Schuljahr.',
+    requires: 'classes.view'
   },
   {
     id: 'account',

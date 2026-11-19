@@ -203,3 +203,40 @@ describe('Menuepunkt Schuljahre (Ticket #54, Rechte aus GET /api/me)', () => {
     expect(screen.queryByRole('link', { name: 'Schuljahre' })).not.toBeInTheDocument();
   });
 });
+
+describe('Menuepunkt Klassen (Ticket #55, Rechte aus GET /api/me)', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    modules: ['core'],
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+  const open = async (permissions: string[]) => {
+    const { client, calls } = fakeClient({
+      'GET /api/me': { data: ME(permissions) },
+      'GET /api/classes/school-years': { data: { school_years: [] } }
+    });
+    render(<App apiClient={client} />);
+    const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    await userEvent.click(await within(nav).findByRole('link', { name: 'Klassen' }));
+    return calls;
+  };
+
+  it('zeigt Klassen mit nur classes.view (ohne school_years.view) und oeffnet die Seite ohne Anlegen-Formular', async () => {
+    const calls = await open(['classes.view']);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Klassen' })).toBeInTheDocument();
+    expect(await screen.findByText(/Es gibt noch kein Schuljahr/)).toBeInTheDocument();
+    expect(calls.some((c) => c.url === '/api/classes/school-years')).toBe(true);
+    expect(calls.some((c) => c.url === '/api/school-years')).toBe(false);
+    expect(screen.queryByRole('link', { name: 'Schuljahre' })).not.toBeInTheDocument();
+  });
+
+  it.each([[[]], [['classes.manage']], [['school_years.view', 'school_years.manage']]])('blendet Klassen ohne classes.view aus (Rechte: %j)', async (permissions) => {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(permissions) } });
+    render(<App apiClient={client} />);
+
+    await screen.findByRole('link', { name: 'Mein Konto' });
+    expect(screen.queryByRole('link', { name: 'Klassen' })).not.toBeInTheDocument();
+  });
+});

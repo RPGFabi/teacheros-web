@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, Chip, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import ClassesPanel from '../classes/ClassesPanel';
 import { describeSchoolYearFailure, formatDay, previewName, statusLabel, statusVariant, type SchoolYear } from './schoolYears';
 
 interface Props {
   apiClient: AxiosInstance;
   /** Recht `school_years.manage` aus GET /api/me; ohne es gibt es kein Anlegen-Formular (die API verweigert es ohnehin). */
   canManage: boolean;
+  /** Recht `classes.view` aus GET /api/me; ohne es zeigt die Detailansicht keine Klassen. */
+  canViewClasses?: boolean;
+  /** Recht `classes.manage` aus GET /api/me; ohne es gibt es in der Detailansicht kein Klasse-anlegen-Formular. */
+  canManageClasses?: boolean;
 }
 
 /**
  * Seite „Schuljahre“ (Ticket #54): die Schuljahre der Schulinstanz nach Beginn mit Status und, mit
  * `school_years.manage`, das Anlegen. Bezeichnung und Status kommen fertig aus der API; die Bezeichnung ist nicht
  * eingebbar, das Formular zeigt nur eine Vorschau. Die Tabelle wird auf dem Smartphone per CSS zu Karten
- * (`data-label` je Zelle).
+ * (`data-label` je Zelle). Ein Klick auf die Bezeichnung oeffnet die Detailansicht (Ticket #55): Zeitraum, Status und die
+ * Klassen des Schuljahres.
  */
-export default function SchoolYearsPage({ apiClient, canManage }: Props) {
+export default function SchoolYearsPage({ apiClient, canManage, canViewClasses = false, canManageClasses = false }: Props) {
   const [years, setYears] = useState<SchoolYear[] | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
@@ -39,6 +46,7 @@ export default function SchoolYearsPage({ apiClient, canManage }: Props) {
   }, [load]);
 
   const preview = previewName(startsOn, endsOn);
+  const detail = years?.find((year) => year.id === detailId);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -58,6 +66,35 @@ export default function SchoolYearsPage({ apiClient, canManage }: Props) {
     // Auch nach einem Fehler neu laden: die Liste kann sich inzwischen geaendert haben.
     await load();
   };
+
+  if (detail) {
+    return (
+      <main className="content">
+        <Button variant="secondary" onClick={() => setDetailId(null)}>Zurück zu den Schuljahren</Button>
+        <h1>Schuljahr {detail.name}</h1>
+        <Card>
+          <dl>
+            <dt>Beginn</dt>
+            <dd>{formatDay(detail.starts_on)}</dd>
+            <dt>Ende</dt>
+            <dd>{formatDay(detail.ends_on)}</dd>
+            <dt>Status</dt>
+            <dd>
+              <Chip variant={statusVariant(detail.status)}>{statusLabel(detail.status)}</Chip>
+            </dd>
+          </dl>
+        </Card>
+        <h2>Klassen</h2>
+        {canViewClasses ? (
+          <ClassesPanel key={detail.id} apiClient={apiClient} schoolYear={detail} canManage={canManageClasses} />
+        ) : (
+          <Card>
+            <p>Zum Ansehen der Klassen fehlt Ihnen das Recht „Klassen ansehen“.</p>
+          </Card>
+        )}
+      </main>
+    );
+  }
 
   return (
     <main className="content">
@@ -112,7 +149,11 @@ export default function SchoolYearsPage({ apiClient, canManage }: Props) {
             <tbody>
               {years.map((year) => (
                 <tr key={year.id}>
-                  <th scope="row">{year.name}</th>
+                  <th scope="row">
+                    <button type="button" className="link-button" onClick={() => setDetailId(year.id)}>
+                      {year.name}
+                    </button>
+                  </th>
                   <td data-label="Beginn">{formatDay(year.starts_on)}</td>
                   <td data-label="Ende">{formatDay(year.ends_on)}</td>
                   <td data-label="Status">

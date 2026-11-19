@@ -160,3 +160,64 @@ describe('Schuljahre: Anlegen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Das Schuljahr konnte nicht angelegt werden');
   });
 });
+
+describe('Schuljahre: Detailansicht mit Klassen (Ticket #55)', () => {
+  const klass = (id: string, grade_level: number, name: string) => ({ id, grade_level, name, school_year: { id: Y2627.id, name: Y2627.name } });
+  const setup = (props: { canViewClasses?: boolean; canManageClasses?: boolean } = {}) => {
+    const { client, calls } = fakeClient({
+      ...list(Y2526, Y2627),
+      'GET /api/classes': (call: FakeCall) => ({ data: { classes: call.params?.school_year_id === 'sy-2' ? [klass('c1', 7, '7a'), klass('c2', 10, '10a')] : [] } }),
+      'POST /api/classes': (call: FakeCall) => ({ status: 201, data: { class: klass('c3', 7, '7b'), echo: call.data } })
+    });
+    render(<SchoolYearsPage apiClient={client} canManage={false} {...props} />);
+    return { calls };
+  };
+
+  it('oeffnet ueber die Bezeichnung die Detailansicht mit Zeitraum, Status und den Klassen des Schuljahres', async () => {
+    const { calls } = setup({ canViewClasses: true });
+
+    await userEvent.click(await screen.findByRole('button', { name: '2026/27' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Schuljahr 2026/27' })).toBeInTheDocument();
+    expect(screen.getByText('14.09.2026')).toBeInTheDocument();
+    expect(screen.getByText('laufend')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Klassen' })).toBeInTheDocument();
+    expect(await screen.findByRole('rowheader', { name: '7a' })).toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['7a', '10a']);
+    expect(calls.find((c) => c.url === '/api/classes')?.params).toEqual({ school_year_id: 'sy-2' });
+    expect(screen.queryByRole('form', { name: 'Klasse anlegen' })).not.toBeInTheDocument();
+  });
+
+  it('fuehrt ueber „Zurueck“ in die Liste', async () => {
+    setup({ canViewClasses: true });
+    await userEvent.click(await screen.findByRole('button', { name: '2026/27' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zurück zu den Schuljahren' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Schuljahre' })).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: '2025/26' })).toBeInTheDocument();
+  });
+
+  it('fragt ohne das Recht Klassen ansehen keine Klassen ab und erklaert das', async () => {
+    const { calls } = setup({ canViewClasses: false });
+
+    await userEvent.click(await screen.findByRole('button', { name: '2026/27' }));
+
+    expect(screen.getByText(/Recht „Klassen ansehen“/)).toBeInTheDocument();
+    expect(calls.some((c) => c.url === '/api/classes')).toBe(false);
+  });
+
+  it('bietet mit dem Recht Klassen verwalten das Anlegen im Schuljahr an', async () => {
+    const { calls } = setup({ canViewClasses: true, canManageClasses: true });
+    await userEvent.click(await screen.findByRole('button', { name: '2026/27' }));
+    await screen.findByRole('rowheader', { name: '7a' });
+
+    const form = screen.getByRole('form', { name: 'Klasse anlegen' });
+    await userEvent.type(within(form).getByLabelText('Klassenstufe'), '7');
+    await userEvent.type(within(form).getByLabelText('Bezeichnung'), '7b');
+    await userEvent.click(within(form).getByRole('button', { name: 'Anlegen' }));
+
+    await waitFor(() => expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1));
+    expect(calls.find((c) => c.method === 'POST')?.data).toEqual({ school_year_id: 'sy-2', grade_level: 7, name: '7b' });
+  });
+});
