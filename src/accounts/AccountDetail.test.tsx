@@ -548,6 +548,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     expect(items[0]).toHaveTextContent('Der Anmeldedienst kennt dieses Konto nicht');
     expect(items[1]).toHaveTextContent('Alle Sitzungen des Kontos sind hier beendet');
     expect(items[1]).not.toHaveTextContent(/abgelehnt/);
+    expect(items[2]).toHaveTextContent('Das TOTP des Kontos ist hier zurückgesetzt');
     expect(items[2]).toHaveTextContent('Der Anmeldedienst hat den Abgleich abgelehnt (seltsam)');
   });
 
@@ -748,5 +749,121 @@ describe('Kontodetail: Sitzungen beenden (Ticket #48)', () => {
     await confirm();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Die Sitzungen konnten nicht beendet werden');
+  });
+});
+
+describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
+  const RESET = `POST /api/accounts/${ID}/reset-mfa`;
+  const ALLOWED = { action: 'reset_mfa', allowed: true, code: null, reason: null } as const;
+  const withAction = (reset: AccountAccess['account_actions'][number], over: Partial<AccountAccess['account']> = {}): AccountAccess => ({
+    ...ACCESS,
+    account: { ...ACCESS.account, ...over },
+    account_actions: [...ACCESS.account_actions, reset]
+  });
+  const RESETTABLE = withAction(ALLOWED);
+  const confirm = async () => userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'TOTP zurücksetzen' }));
+
+  it('zeigt „TOTP zurücksetzen …“ aktiv, wenn die API die Aktion erlaubt, und fragt vor dem Ausfuehren nach', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE } });
+
+    const button = await screen.findByRole('button', { name: 'TOTP zurücksetzen …' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('ziel@schule.test');
+    expect(dialog).toHaveTextContent('TOTP neu einrichten');
+    expect(dialog).toHaveTextContent('Sitzungen');
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('Abbrechen im Dialog setzt nichts zurueck', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('setzt nach Bestaetigung das TOTP per POST zurueck und meldet den Erfolg', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE }, [RESET]: { data: withAction(ALLOWED, { open_calls: [] }) } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^TOTP zurückgesetzt\. Alle Sitzungen des Kontos sind beendet; die Person muss TOTP neu einrichten.$/);
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/reset-mfa`]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('nennt bei offenem Aufruf, dass der Anmeldedienst es noch nicht bestaetigt hat, und zeigt „Abgleich wiederholen“', async () => {
+    const open = withAction(ALLOWED, { open_calls: [{ operation: 'reset_mfa', rejection_code: null }] });
+    open.account_actions.push({ action: 'resync_login', allowed: true, code: null, reason: null });
+    mount({ [path]: { data: RESETTABLE }, [RESET]: { data: open } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent('TOTP zurückgesetzt. Der Anmeldedienst hat das noch nicht bestätigt');
+    const section = screen.getByRole('region', { name: 'Konto' });
+    expect(section).toHaveTextContent('Das TOTP des Kontos ist hier zurückgesetzt');
+    expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('laesst die Aktion sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
+    const reason = 'Bei Konten, die noch nicht angenommen wurden, gibt es kein TOTP zurückzusetzen.';
+    mount({ [path]: { data: withAction({ action: 'reset_mfa', allowed: false, code: 'account_not_active', reason }, { status: 'invited' }) } });
+
+    const button = await screen.findByRole('button', { name: 'TOTP zurücksetzen …' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+  });
+
+  it('bietet die Aktion auch bei einem deaktivierten Konto an, wenn die API sie erlaubt', async () => {
+    mount({ [path]: { data: withAction(ALLOWED, { status: 'inactive', inactive_since: '2026-11-18T10:00:00+00:00', inactive_reason: 'admin_locked' }) } });
+
+    expect(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' })).toBeEnabled();
+  });
+
+  it('blendet die Aktion aus, wenn die API sie nicht nennt', async () => {
+    mount({});
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByRole('button', { name: 'TOTP zurücksetzen …' })).not.toBeInTheDocument();
+  });
+
+  it('verraet nicht, ob TOTP eingerichtet ist', async () => {
+    mount({ [path]: { data: RESETTABLE } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(section).not.toHaveTextContent(/eingerichtet (ist|war)/);
+  });
+
+  it.each([
+    ['self_mfa_reset', 409, 'nicht über die Verwaltung'],
+    ['account_not_active', 409, 'noch nicht angenommen'],
+    ['permission_not_held', 403, 'sein TOTP nicht zurücksetzen'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
+  ])('uebersetzt den Fehlercode %s in einen Text, schliesst den Dialog und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mount({ [path]: { data: RESETTABLE }, [RESET]: { status, data: { error: 'x', code } } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [path]: { data: RESETTABLE }, [RESET]: { status: 500 } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das TOTP konnte nicht zurückgesetzt werden');
   });
 });
