@@ -79,10 +79,10 @@ export interface AccountAccess {
     inactive_since: string | null;
     /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
     inactive_reason: string | null;
+    /** „Abgleich offen“ (Tickets #42, #47): die offenen Aufrufe in der Reihenfolge des Nachholens; leer, wenn nichts offen ist. Fehlt ohne `accounts.view`. */
+    open_calls?: OpenCall[];
     mfa_required: boolean;
   };
-  /** „Abgleich offen“ (Tickets #42, #47): die offenen Aufrufe in der Reihenfolge des Nachholens; leer, wenn nichts offen ist. Fehlt ohne `accounts.view`. */
-  open_calls?: OpenCall[];
   roles?: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
   permissions?: PermissionRow[];
   role_actions?: RoleAction[];

@@ -99,7 +99,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
 
   function deactivate() {
     setConfirmingDeactivation(false);
-    return perform('deactivate', () => post('deactivate'), (data) => (data.open_calls?.length ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
+    return perform('deactivate', () => post('deactivate'), (data) => (data.account.open_calls?.length ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
   }
 
   const reactivate = () => perform('reactivate', () => post('reactivate'), () => 'Konto reaktiviert.');
@@ -160,7 +160,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
   const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
-  const openCalls = access.open_calls ?? NO_OPEN_CALLS;
+  const openCalls = access.account.open_calls ?? NO_OPEN_CALLS;
   const resyncAction = openCalls.length > 0 ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
   const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const accountName = access.account.email ?? access.account.login_name;
