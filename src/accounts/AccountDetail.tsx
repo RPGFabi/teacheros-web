@@ -54,6 +54,15 @@ const REACTIVATE_ERROR_TEXT: Record<string, string> = {
   permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht reaktivieren.'
 };
 
+/** Was die fachliche Ablehnung des Anmeldedienstes beim Abgleich bedeutet (`account.login_sync_error`); andere Codes erscheinen allgemein. */
+const SYNC_REJECTION_TEXT: Record<string, string> = {
+  user_not_found: 'Der Anmeldedienst kennt das Konto nicht.'
+};
+
+function syncRejectionText(code: string): string {
+  return SYNC_REJECTION_TEXT[code] ?? `Der Anmeldedienst hat den Abgleich abgelehnt (${code}).`;
+}
+
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
@@ -84,7 +93,7 @@ function describeFailure(err: unknown, overrides: Record<string, string> = {}, f
  * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
  * Reaktivierung (Ticket #43): bei einem deaktivierten Konto steht im Abschnitt „Konto“ „Reaktivieren“ (Aktion `reactivate`,
  * gesperrt sichtbar mit Begruendung); die API ruft zuerst den Anmeldedienst, bei Fehlschlag bleibt das Konto deaktiviert.
- * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Sperre dort noch nicht gemeldet (`login_sync_pending`), steht im
+ * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Deaktivierung dort noch nicht gemeldet (`login_sync_pending`), steht im
  * Abschnitt „Konto“ ein Hinweis und „Abgleich wiederholen“ (Aktion `resync_login`, gesperrt sichtbar ohne Recht).
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, canAssignPermissions = false, onBack }: Props) {
@@ -293,7 +302,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <Card>
         <section aria-label="Konto">
           <h2>Konto</h2>
-          <p>Eine Deaktivierung sperrt das Konto sofort. Rollen und Rechte bleiben erhalten.</p>
+          <p>Eine Deaktivierung beendet laufende Sitzungen sofort, die Person kann sich nicht mehr anmelden. Rollen und Rechte bleiben erhalten.</p>
           <Button
             variant="secondary"
             disabled={busy || deactivationBlocked !== null}
@@ -330,8 +339,9 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
             <>
               <h3>Abgleich mit dem Anmeldedienst offen</h3>
               <p>
-                Das Konto ist hier gesperrt und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Sperre aber noch nicht gemeldet, bis der Abgleich gelingt.
+                Das Konto ist hier deaktiviert und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet, bis der Abgleich gelingt.
               </p>
+              {access.account.login_sync_error && <p>{syncRejectionText(access.account.login_sync_error)}</p>}
               <Button
                 variant="secondary"
                 disabled={busy || resyncBlocked !== null}

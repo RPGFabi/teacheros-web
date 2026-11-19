@@ -15,7 +15,7 @@ export interface AccountRow {
   invited_at: string | null;
   /** ISO 8601 (UTC): seit wann das Konto deaktiviert ist; sonst null (Ticket #41). */
   inactive_since?: string | null;
-  /** „Abgleich offen“: die Sperre ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). */
+  /** „Abgleich offen“: die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). */
   login_sync_pending?: boolean;
 }
 
@@ -54,7 +54,7 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_email: 'Die E-Mail-Adresse ist ungültig.',
   invalid_username: 'Der Anmeldename ist ungültig. Erlaubt sind 3 bis 64 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.',
   username_login_disabled: 'Konten ohne E-Mail-Adresse sind an dieser Schulinstanz nicht eingerichtet. Bitte geben Sie eine E-Mail-Adresse an.',
-  account_disabled: 'Dieses Konto ist gesperrt und kann nicht eingeladen werden.',
+  account_disabled: 'Dieses Konto ist deaktiviert und kann nicht eingeladen werden.',
   invalid_request: 'Die Anfrage wurde abgelehnt. Bitte prüfen Sie Ihre Angaben.',
   forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.',
   auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Es wurde nichts angelegt; bitte versuchen Sie es gleich noch einmal.'
@@ -217,7 +217,7 @@ export default function AccountsPage({
                     {account.login_sync_pending && (
                       <>
                         {' '}
-                        <small title="Die Sperre ist dem Anmeldedienst noch nicht gemeldet.">{SYNC_PENDING_LABEL}</small>
+                        <small title="Die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet.">{SYNC_PENDING_LABEL}</small>
                       </>
                     )}
                   </td>

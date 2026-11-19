@@ -127,7 +127,7 @@ describe('Konten: Einladen', () => {
     ['invalid_email', 400, 'Die E-Mail-Adresse ist ungültig'],
     ['invalid_username', 400, 'Der Anmeldename ist ungültig'],
     ['username_login_disabled', 400, 'Konten ohne E-Mail-Adresse'],
-    ['account_disabled', 409, 'Dieses Konto ist gesperrt'],
+    ['account_disabled', 409, 'Dieses Konto ist deaktiviert'],
     ['invalid_request', 400, 'Die Anfrage wurde abgelehnt'],
     ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht'],
     ['auth_unavailable', 502, 'Der Anmeldedienst ist gerade nicht erreichbar']

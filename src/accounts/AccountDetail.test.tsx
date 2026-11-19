@@ -418,6 +418,36 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
   });
 
+  it('nennt im offenen Abgleich in Worten der Deaktivierung, nicht der Sperre, was offen ist', async () => {
+    mount({ [path]: { data: PENDING } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(section).toHaveTextContent('Das Konto ist hier deaktiviert');
+    expect(section).toHaveTextContent('Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet');
+    expect(section).not.toHaveTextContent(/gesperrt|Sperre/);
+  });
+
+  it('nennt bei fachlicher Ablehnung des Anmeldedienstes den Grund verstaendlich statt nur „Abgleich offen“', async () => {
+    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'user_not_found' } } } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(within(section).getByText(/Der Anmeldedienst kennt das Konto nicht/)).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('nennt bei einem unbekannten Ablehnungscode den Code allgemein', async () => {
+    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'seltsam' } } } });
+
+    expect(await screen.findByText(/Der Anmeldedienst hat den Abgleich abgelehnt \(seltsam\)/)).toBeInTheDocument();
+  });
+
+  it('nennt ohne Ablehnungscode (Dienst nicht erreichbar) keine Ablehnung', async () => {
+    mount({ [path]: { data: PENDING } });
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByText(/abgelehnt|kennt das Konto nicht/)).not.toBeInTheDocument();
+  });
+
   it('zeigt weder Hinweis noch Knopf, wenn kein Abgleich offen ist', async () => {
     mount({ [path]: { data: SYNCED } });
 

@@ -68,8 +68,10 @@ export interface AccountAccess {
     inactive_since: string | null;
     /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
     inactive_reason: string | null;
-    /** „Abgleich offen“: die Sperre ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). Fehlt ohne `accounts.view`. */
+    /** „Abgleich offen“: die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). Fehlt ohne `accounts.view`. */
     login_sync_pending?: boolean;
+    /** Code, mit dem der Anmeldedienst den Abgleich fachlich abgelehnt hat (z. B. `user_not_found`); null bei Nichterreichbarkeit (Review #12). */
+    login_sync_error?: string | null;
     mfa_required: boolean;
   };
   roles?: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
