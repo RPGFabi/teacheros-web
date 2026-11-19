@@ -68,18 +68,19 @@ describe('Mein Konto: Alle Sitzungen beenden (Ticket #50)', () => {
     expect(auth.calls.some((c) => c.method === 'POST' && c.url === '/logout')).toBe(true);
   });
 
-  it('zeigt bei 502 auth_unavailable den Hinweis, bleibt angemeldet und meldet nicht ab', async () => {
+  it('meldet bei 502 auth_unavailable ab und zeigt den Hinweis auf der Login-Seite (die Sitzungen sind gesperrt)', async () => {
     const { auth } = await setup({ [REVOKE]: { status: 502, data: { error: 'x', code: 'auth_unavailable' } } });
     await open();
 
     await confirm();
 
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('später erneut an');
-    expect(alert).toHaveTextContent('Schule');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveTextContent('später erneut an');
+    expect(notice).toHaveTextContent('Schule');
+    expect(notice).not.toHaveTextContent('Alle Sitzungen wurden beendet.');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Mein Konto' })).toBeInTheDocument();
-    expect(auth.calls.some((c) => c.url === '/logout')).toBe(false);
+    expect(auth.calls.some((c) => c.method === 'POST' && c.url === '/logout')).toBe(true);
   });
 
   it('meldet sonstige Fehler allgemein', async () => {

@@ -43,10 +43,10 @@ export interface PermissionAction {
 
 /**
  * Eine Aktion am Konto selbst (Ticket #41: `deactivate`; Ticket #42: `resync_login` = „Abgleich wiederholen“, nur solange
- * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten; Ticket #48: `revoke_sessions` = Sitzungen beenden; Ticket #49: `reset_mfa` = TOTP zuruecksetzen); gesperrt mit Code und deutscher Begruendung.
+ * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten; Ticket #48: `revoke_sessions` = Sitzungen beenden; Ticket #49: `reset_totp` = TOTP zuruecksetzen); gesperrt mit Code und deutscher Begruendung.
  */
 export interface AccountAction {
-  action: 'deactivate' | 'resync_login' | 'reactivate' | 'revoke_sessions' | 'reset_mfa';
+  action: 'deactivate' | 'resync_login' | 'reactivate' | 'revoke_sessions' | 'reset_totp';
   allowed: boolean;
   code: string | null;
   reason: string | null;
@@ -54,7 +54,7 @@ export interface AccountAction {
 
 /**
  * Ein offener Aufruf an den Anmeldedienst („Abgleich offen“, Ticket #47): eine lokal schon wirksame Aenderung, die der
- * Dienst noch nicht bestaetigt hat. `operation` ist `disable_login` (Sperre) oder `revoke_sessions` (Sitzungswiderruf, Ticket #48) oder `reset_mfa` (TOTP-Zuruecksetzung, Ticket #49). `rejection_code` ist der Code der letzten fachlichen Ablehnung, null bei
+ * Dienst noch nicht bestaetigt hat. `operation` ist `disable_login` (Sperre) oder `revoke_sessions` (Sitzungswiderruf, Ticket #48) oder `reset_totp` (TOTP-Zuruecksetzung, Ticket #49). `rejection_code` ist der Code der letzten fachlichen Ablehnung, null bei
  * Nichterreichbarkeit.
  */
 export interface OpenCall {

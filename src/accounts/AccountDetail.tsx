@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
-import type { AccountAccess, PermissionAction, RoleAction } from './access';
+import type { AccountAccess, AccountAction, PermissionAction, RoleAction } from './access';
 import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
 import { describeFailure, loadFailureText, openCallText, syncRejectionText, type Flow } from './errorText';
 
@@ -18,11 +18,52 @@ interface Props {
 
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const REVOCATION_PENDING_NOTICE = 'Sitzungen beendet. Der Anmeldedienst hat das noch nicht bestätigt; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab. Wiederholen Sie den Abgleich im Abschnitt „Konto“.';
-const MFA_RESET_DONE_NOTICE = 'TOTP zurückgesetzt. Alle Sitzungen des Kontos sind beendet; die Person muss TOTP neu einrichten.';
-const MFA_RESET_PENDING_NOTICE = 'TOTP zurückgesetzt. Der Anmeldedienst hat das noch nicht bestätigt; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab. Wiederholen Sie den Abgleich im Abschnitt „Konto“.';
+const TOTP_RESET_DONE_NOTICE = 'TOTP zurückgesetzt. Alle Sitzungen des Kontos sind beendet; die Person muss TOTP neu einrichten.';
+const TOTP_RESET_PENDING_NOTICE = 'TOTP zurückgesetzt. Der Anmeldedienst hat das noch nicht bestätigt; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab. Wiederholen Sie den Abgleich im Abschnitt „Konto“.';
 const NO_OPEN_CALLS: never[] = [];
+const NOT_ALLOWED = 'Diese Aktion ist nicht erlaubt.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
+
+/** Warum eine Aktion gesperrt ist (Begruendung der API); null, wenn sie erlaubt ist. */
+const blockedReason = (action: { allowed: boolean; reason: string | null } | undefined) => (action?.allowed ? null : (action?.reason ?? NOT_ALLOWED));
+
+/** Eine Aktion als Schaltflaeche; gesperrt bleibt sie sichtbar, mit ihrer Begruendung als Beschreibung darunter. */
+function ActionButton({ hintId, label, ariaLabel, blocked, busy, onClick }: {
+  hintId: string;
+  label: string;
+  ariaLabel?: string;
+  blocked: string | null;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <>
+      <Button variant="secondary" disabled={busy || blocked !== null} aria-label={ariaLabel} aria-describedby={blocked ? hintId : undefined} onClick={onClick}>
+        {label}
+      </Button>
+      {blocked && (
+        <small id={hintId} style={{ display: 'block' }}>
+          {blocked}
+        </small>
+      )}
+    </>
+  );
+}
+
+/** Eine Aktion im Abschnitt „Konto“: Ueberschrift, Erklaerung und Schaltflaeche mit Begruendung. */
+function ActionSection({ title, text, children }: { title: string; text: string; children: ReactNode }) {
+  return (
+    <>
+      <h3>{title}</h3>
+      <p>{text}</p>
+      {children}
+    </>
+  );
+}
+
+/** Die Aktionen am Konto, die vor dem Ausfuehren einen Bestaetigungsdialog zeigen. */
+type Confirmable = 'deactivate' | 'revoke' | 'resetTotp';
 
 const PERMISSION_VERBS = {
   grant: { button: 'Gewähren', label: 'Einzelrecht gewähren', done: 'gewährt' },
@@ -44,8 +85,9 @@ const PERMISSION_VERBS = {
  * Sitzungen beenden (Ticket #48): „Sitzungen beenden …“ mit Bestaetigungsdialog im Abschnitt „Konto“ (Aktion `revoke_sessions`, gesperrt
  * sichtbar mit Begruendung); das Konto bleibt aktiv, nur alle Sitzungen enden. Ist der Anmeldedienst nicht erreichbar, bleibt der
  * Widerruf als offener Aufruf bestehen (`open_calls`) und die Ansicht nennt das.
- * TOTP zuruecksetzen (Ticket #49): „TOTP zurücksetzen …“ mit Bestaetigungsdialog im Abschnitt „Konto“ (Aktion `reset_mfa`, auch bei deaktivierten
+ * TOTP zuruecksetzen (Ticket #49): „TOTP zurücksetzen …“ mit Bestaetigungsdialog im Abschnitt „Konto“ (Aktion `reset_totp`, auch bei deaktivierten
  * Konten; gesperrt sichtbar mit Begruendung); der Dialog nennt, dass die Person TOTP neu einrichten muss. Ob TOTP eingerichtet ist, zeigt die Ansicht nicht.
+ * Die drei Aktionen mit Bestaetigung teilen sich einen Dialog (`confirming`); Schaltflaeche und Begruendung zeigt `ActionButton`.
  * Abgleich mit dem Anmeldedienst (Tickets #42, #47): ist ein Aufruf dort noch offen (`open_calls`, z. B. die Deaktivierung), steht im
  * Abschnitt „Konto“ je offenem Aufruf ein Satz mit dem Grund der Ablehnung und einmal „Abgleich wiederholen“ (Aktion
  * `resync_login`, holt alle nach; gesperrt sichtbar ohne Recht).
@@ -56,9 +98,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
-  const [confirmingRevocation, setConfirmingRevocation] = useState(false);
-  const [confirmingMfaReset, setConfirmingMfaReset] = useState(false);
+  const [confirming, setConfirming] = useState<Confirmable | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -108,12 +148,10 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     perform('assign', () => post(`permissions/${item.action}`, { permission: item.permission }), () => `Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
 
   function deactivate() {
-    setConfirmingDeactivation(false);
     return perform('deactivate', () => post('deactivate'), (data) => (data.account.open_calls?.length ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
   }
 
   function revokeSessions() {
-    setConfirmingRevocation(false);
     return perform(
       'revoke',
       () => post('revoke-sessions'),
@@ -121,12 +159,11 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     );
   }
 
-  function resetMfa() {
-    setConfirmingMfaReset(false);
+  function resetTotp() {
     return perform(
-      'resetMfa',
-      () => post('reset-mfa'),
-      (data) => (data.account.open_calls?.some((call) => call.operation === 'reset_mfa') ? MFA_RESET_PENDING_NOTICE : MFA_RESET_DONE_NOTICE)
+      'resetTotp',
+      () => post('reset-totp'),
+      (data) => (data.account.open_calls?.some((call) => call.operation === 'reset_totp') ? TOTP_RESET_PENDING_NOTICE : TOTP_RESET_DONE_NOTICE)
     );
   }
 
@@ -161,46 +198,57 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const available = (roleActions ?? []).filter((a) => a.action === 'assign');
 
   const roleRow = (role: RoleAction, label: string) => {
-    const blocked = !canAssign ? NO_RIGHT_REASON : role.allowed ? null : (role.reason ?? 'Diese Aktion ist nicht erlaubt.');
-    const hintId = `role-hint-${role.role_id}`;
+    const blocked = !canAssign ? NO_RIGHT_REASON : blockedReason(role);
     return (
       <li key={role.role_id}>
         <strong>{role.role_name}</strong>{' '}
-        <Button
-          variant="secondary"
-          disabled={busy || blocked !== null}
-          aria-label={`${label}: ${role.role_name}`}
-          aria-describedby={blocked ? hintId : undefined}
+        <ActionButton
+          hintId={`role-hint-${role.role_id}`}
+          label={role.action === 'assign' ? 'Hinzufügen' : 'Entziehen'}
+          ariaLabel={`${label}: ${role.role_name}`}
+          blocked={blocked}
+          busy={busy}
           onClick={() => void change(role)}
-        >
-          {role.action === 'assign' ? 'Hinzufügen' : 'Entziehen'}
-        </Button>
-        {blocked && (
-          <small id={hintId} style={{ display: 'block' }}>
-            {blocked}
-          </small>
-        )}
+        />
       </li>
     );
   };
 
-  const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
-  const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
-  const revocation = access.account_actions.find((a) => a.action === 'revoke_sessions');
-  const revocationBlocked = revocation?.allowed ? null : (revocation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
-  const mfaReset = access.account_actions.find((a) => a.action === 'reset_mfa');
-  const mfaResetBlocked = mfaReset?.allowed ? null : (mfaReset?.reason ?? 'Diese Aktion ist nicht erlaubt.');
-  const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
-  const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const action = (name: AccountAction['action']) => access.account_actions.find((a) => a.action === name);
+  const deactivation = action('deactivate');
+  const revocation = action('revoke_sessions');
+  const totpReset = action('reset_totp');
+  const reactivation = action('reactivate');
   const openCalls = access.account.open_calls ?? NO_OPEN_CALLS;
-  const resyncAction = openCalls.length > 0 ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
-  const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const resyncAction = openCalls.length > 0 ? action('resync_login') : undefined;
   const accountName = access.account.email ?? access.account.login_name;
+
+  // Die Bestaetigungsdialoge der drei Aktionen; `run` laeuft nach dem Bestaetigen.
+  const dialogs: Record<Confirmable, { title: string; description: string; confirmText: string; run: () => Promise<void> }> = {
+    deactivate: {
+      title: `Konto „${accountName}“ deaktivieren?`,
+      description: 'Die Person kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Rollen und Daten bleiben erhalten; die Verwaltung kann das Konto später reaktivieren.',
+      confirmText: 'Deaktivieren',
+      run: deactivate
+    },
+    revoke: {
+      title: `Sitzungen von „${accountName}“ beenden?`,
+      description: 'Alle Sitzungen des Kontos enden sofort, auch auf anderen Geräten. Das Konto bleibt aktiv, Rollen und Daten bleiben erhalten; die Person muss sich neu anmelden.',
+      confirmText: 'Sitzungen beenden',
+      run: revokeSessions
+    },
+    resetTotp: {
+      title: `TOTP von „${accountName}“ zurücksetzen?`,
+      description: 'Die Person muss TOTP neu einrichten.',
+      confirmText: 'TOTP zurücksetzen',
+      run: resetTotp
+    }
+  };
+  const dialog = confirming ? dialogs[confirming] : null;
 
   const permissionRow = (item: PermissionAction) => {
     const row = permissions?.find((p) => p.key === item.permission);
-    const blocked = !canAssignPermissions ? NO_PERMISSION_RIGHT_REASON : item.allowed ? null : (item.reason ?? 'Diese Aktion ist nicht erlaubt.');
-    const hintId = `permission-hint-${item.permission}`;
+    const blocked = !canAssignPermissions ? NO_PERMISSION_RIGHT_REASON : blockedReason(item);
     const verb = PERMISSION_VERBS[item.action];
     return (
       <tr key={item.permission}>
@@ -209,20 +257,14 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
           <PermissionSources sources={row?.sources ?? []} />
         </td>
         <td>
-          <Button
-            variant="secondary"
-            disabled={busy || blocked !== null}
-            aria-label={`${verb.label}: ${item.name}`}
-            aria-describedby={blocked ? hintId : undefined}
+          <ActionButton
+            hintId={`permission-hint-${item.permission}`}
+            label={verb.button}
+            ariaLabel={`${verb.label}: ${item.name}`}
+            blocked={blocked}
+            busy={busy}
             onClick={() => void changePermission(item)}
-          >
-            {verb.button}
-          </Button>
-          {blocked && (
-            <small id={hintId} style={{ display: 'block' }}>
-              {blocked}
-            </small>
-          )}
+          />
         </td>
       </tr>
     );
@@ -243,75 +285,27 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
         <section aria-label="Konto">
           <h2>Konto</h2>
           <p>Eine Deaktivierung beendet laufende Sitzungen sofort, die Person kann sich nicht mehr anmelden. Rollen und Rechte bleiben erhalten.</p>
-          <Button
-            variant="secondary"
-            disabled={busy || deactivationBlocked !== null}
-            aria-describedby={deactivationBlocked ? 'deactivate-hint' : undefined}
-            onClick={() => setConfirmingDeactivation(true)}
-          >
-            Deaktivieren …
-          </Button>
-          {deactivationBlocked && (
-            <small id="deactivate-hint" style={{ display: 'block' }}>
-              {deactivationBlocked}
-            </small>
-          )}
+          <ActionButton hintId="deactivate-hint" label="Deaktivieren …" blocked={blockedReason(deactivation)} busy={busy} onClick={() => setConfirming('deactivate')} />
           {revocation && (
-            <>
-              <h3>Sitzungen beenden</h3>
-              <p>Beendet alle Sitzungen des Kontos auf allen Geräten, etwa nach einem Geräteverlust. Das Konto bleibt aktiv; die Person meldet sich danach neu an.</p>
-              <Button
-                variant="secondary"
-                disabled={busy || revocationBlocked !== null}
-                aria-describedby={revocationBlocked ? 'revoke-hint' : undefined}
-                onClick={() => setConfirmingRevocation(true)}
-              >
-                Sitzungen beenden …
-              </Button>
-              {revocationBlocked && (
-                <small id="revoke-hint" style={{ display: 'block' }}>
-                  {revocationBlocked}
-                </small>
-              )}
-            </>
+            <ActionSection
+              title="Sitzungen beenden"
+              text="Beendet alle Sitzungen des Kontos auf allen Geräten, etwa nach einem Geräteverlust. Das Konto bleibt aktiv; die Person meldet sich danach neu an."
+            >
+              <ActionButton hintId="revoke-hint" label="Sitzungen beenden …" blocked={blockedReason(revocation)} busy={busy} onClick={() => setConfirming('revoke')} />
+            </ActionSection>
           )}
-          {mfaReset && (
-            <>
-              <h3>TOTP zurücksetzen</h3>
-              <p>Setzt den zweiten Faktor (TOTP) des Kontos zurück, etwa wenn Gerät und Recovery-Codes verloren sind. Alle Sitzungen enden; die Person muss TOTP danach neu einrichten.</p>
-              <Button
-                variant="secondary"
-                disabled={busy || mfaResetBlocked !== null}
-                aria-describedby={mfaResetBlocked ? 'reset-mfa-hint' : undefined}
-                onClick={() => setConfirmingMfaReset(true)}
-              >
-                TOTP zurücksetzen …
-              </Button>
-              {mfaResetBlocked && (
-                <small id="reset-mfa-hint" style={{ display: 'block' }}>
-                  {mfaResetBlocked}
-                </small>
-              )}
-            </>
+          {totpReset && (
+            <ActionSection
+              title="TOTP zurücksetzen"
+              text="Setzt den zweiten Faktor (TOTP) des Kontos zurück, etwa wenn Gerät und Recovery-Codes verloren sind. Alle Sitzungen enden; die Person muss TOTP danach neu einrichten."
+            >
+              <ActionButton hintId="reset-totp-hint" label="TOTP zurücksetzen …" blocked={blockedReason(totpReset)} busy={busy} onClick={() => setConfirming('resetTotp')} />
+            </ActionSection>
           )}
           {reactivation && (
-            <>
-              <h3>Konto reaktivieren</h3>
-              <p>Die Person kann sich danach wieder anmelden. Frühere Sitzungen bleiben beendet: Die Person muss sich danach neu anmelden.</p>
-              <Button
-                variant="secondary"
-                disabled={busy || reactivationBlocked !== null}
-                aria-describedby={reactivationBlocked ? 'reactivate-hint' : undefined}
-                onClick={() => void reactivate()}
-              >
-                Reaktivieren
-              </Button>
-              {reactivationBlocked && (
-                <small id="reactivate-hint" style={{ display: 'block' }}>
-                  {reactivationBlocked}
-                </small>
-              )}
-            </>
+            <ActionSection title="Konto reaktivieren" text="Die Person kann sich danach wieder anmelden. Frühere Sitzungen bleiben beendet: Die Person muss sich danach neu anmelden.">
+              <ActionButton hintId="reactivate-hint" label="Reaktivieren" blocked={blockedReason(reactivation)} busy={busy} onClick={() => void reactivate()} />
+            </ActionSection>
           )}
           {resyncAction && (
             <>
@@ -324,49 +318,22 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
                   </li>
                 ))}
               </ul>
-              <Button
-                variant="secondary"
-                disabled={busy || resyncBlocked !== null}
-                aria-describedby={resyncBlocked ? 'resync-hint' : undefined}
-                onClick={() => void resync()}
-              >
-                Abgleich wiederholen
-              </Button>
-              {resyncBlocked && (
-                <small id="resync-hint" style={{ display: 'block' }}>
-                  {resyncBlocked}
-                </small>
-              )}
+              <ActionButton hintId="resync-hint" label="Abgleich wiederholen" blocked={blockedReason(resyncAction)} busy={busy} onClick={() => void resync()} />
             </>
           )}
         </section>
       </Card>
       <ConfirmDialog
-        open={confirmingDeactivation}
-        title={`Konto „${accountName}“ deaktivieren?`}
-        description="Die Person kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Rollen und Daten bleiben erhalten; die Verwaltung kann das Konto später reaktivieren."
-        confirmText="Deaktivieren"
+        open={dialog !== null}
+        title={dialog?.title ?? ''}
+        description={dialog?.description ?? ''}
+        confirmText={dialog?.confirmText ?? ''}
         variant="danger"
-        onConfirm={() => void deactivate()}
-        onCancel={() => setConfirmingDeactivation(false)}
-      />
-      <ConfirmDialog
-        open={confirmingRevocation}
-        title={`Sitzungen von „${accountName}“ beenden?`}
-        description="Alle Sitzungen des Kontos enden sofort, auch auf anderen Geräten. Das Konto bleibt aktiv, Rollen und Daten bleiben erhalten; die Person muss sich neu anmelden."
-        confirmText="Sitzungen beenden"
-        variant="danger"
-        onConfirm={() => void revokeSessions()}
-        onCancel={() => setConfirmingRevocation(false)}
-      />
-      <ConfirmDialog
-        open={confirmingMfaReset}
-        title={`TOTP von „${accountName}“ zurücksetzen?`}
-        description="Das TOTP des Kontos wird zurückgesetzt, Recovery-Codes und vertrauenswürdige Geräte verfallen, alle Sitzungen enden sofort. Die Person muss TOTP neu einrichten; bei Konten mit MFA-Pflicht ist die Anwendung bis dahin gesperrt."
-        confirmText="TOTP zurücksetzen"
-        variant="danger"
-        onConfirm={() => void resetMfa()}
-        onCancel={() => setConfirmingMfaReset(false)}
+        onConfirm={() => {
+          setConfirming(null);
+          void dialog?.run();
+        }}
+        onCancel={() => setConfirming(null)}
       />
       {showsAccess && (
         <>

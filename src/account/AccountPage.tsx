@@ -13,15 +13,21 @@ export interface Me {
   session: { used_mfa: boolean; expires_at: string; mfa_enrollment_required?: boolean };
 }
 
+/** Hinweis auf der Anmeldeseite nach dem eigenen Sitzungswiderruf (Ticket #50). */
+const SESSIONS_REVOKED_NOTICE = 'Alle Sitzungen wurden beendet.';
 const REVOCATION_FAILED = 'Die Sitzungen konnten nicht beendet werden. Bitte versuchen Sie es erneut.';
-/** Alle Versuche beim Anmeldedienst sind gescheitert (502 `auth_unavailable`): die Sitzungen sind hier gesperrt, der Widerruf bleibt offen. */
+/**
+ * Alle Versuche beim Anmeldedienst sind gescheitert (502 `auth_unavailable`): die Sitzungen sind hier gesperrt, der Widerruf bleibt offen.
+ * Das Konto ist damit ohnehin abgelehnt; das Web meldet ab und zeigt den Hinweis auf der Anmeldeseite.
+ */
 const REVOCATION_UNCONFIRMED =
   'Der Anmeldedienst ist gerade nicht erreichbar. Ihre Sitzungen sind gesperrt, das ist dem Anmeldedienst aber noch nicht gemeldet. Bitte melden Sie sich später erneut an oder wenden Sie sich an Ihre Schule.';
 
 /**
  * „Mein Konto“. Alle Sitzungen beenden (Ticket #50): „Alle Sitzungen beenden …“ mit Bestaetigungsdialog, ohne besonderes Recht.
  * Die API beendet auch die aktuelle Sitzung; bei Erfolg meldet das Web ueber `onSessionsRevoked` ab (der Aufrufer zeigt den
- * Hinweis auf der Anmeldeseite). Scheitert der Anmeldedienst (502 `auth_unavailable`), bleibt die Seite mit einem Hinweis stehen.
+ * Hinweis auf der Anmeldeseite). Ist der Anmeldedienst nicht erreichbar (502 `auth_unavailable`), sind die Sitzungen trotzdem gesperrt:
+ * auch dann meldet das Web ab und der Hinweis dazu erscheint auf der Anmeldeseite. Sonstige Fehler bleiben auf der Seite stehen.
  */
 export default function AccountPage({
   me,
@@ -32,7 +38,8 @@ export default function AccountPage({
   me: Me | null;
   error: string | null;
   apiClient: AxiosInstance;
-  onSessionsRevoked?: () => void;
+  /** Das Konto ist abzumelden; `notice` ist der Hinweis fuer die Anmeldeseite. */
+  onSessionsRevoked?: (notice: string) => void;
 }) {
   const { currentMail, logout } = useAuth();
   const [confirming, setConfirming] = useState(false);
@@ -45,9 +52,13 @@ export default function AccountPage({
     setRevocationError(null);
     try {
       await apiClient.post('/api/me/revoke-sessions');
-      onSessionsRevoked();
+      onSessionsRevoked(SESSIONS_REVOKED_NOTICE);
     } catch (err) {
-      setRevocationError(errorCode(err) === 'auth_unavailable' ? REVOCATION_UNCONFIRMED : REVOCATION_FAILED);
+      if (errorCode(err) === 'auth_unavailable') {
+        onSessionsRevoked(REVOCATION_UNCONFIRMED);
+        return;
+      }
+      setRevocationError(REVOCATION_FAILED);
       setBusy(false);
     }
   }

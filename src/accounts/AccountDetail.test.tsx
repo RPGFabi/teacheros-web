@@ -534,7 +534,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
             open_calls: [
               { operation: 'disable_login', rejection_code: 'user_not_found' },
               { operation: 'revoke_sessions', rejection_code: null },
-              { operation: 'reset_mfa', rejection_code: 'seltsam' }
+              { operation: 'reset_totp', rejection_code: 'seltsam' }
             ]
           }
         }
@@ -753,8 +753,8 @@ describe('Kontodetail: Sitzungen beenden (Ticket #48)', () => {
 });
 
 describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
-  const RESET = `POST /api/accounts/${ID}/reset-mfa`;
-  const ALLOWED = { action: 'reset_mfa', allowed: true, code: null, reason: null } as const;
+  const RESET = `POST /api/accounts/${ID}/reset-totp`;
+  const ALLOWED = { action: 'reset_totp', allowed: true, code: null, reason: null } as const;
   const withAction = (reset: AccountAccess['account_actions'][number], over: Partial<AccountAccess['account']> = {}): AccountAccess => ({
     ...ACCESS,
     account: { ...ACCESS.account, ...over },
@@ -773,7 +773,7 @@ describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('ziel@schule.test');
     expect(dialog).toHaveTextContent('TOTP neu einrichten');
-    expect(dialog).toHaveTextContent('Sitzungen');
+    expect(dialog).not.toHaveTextContent('Recovery-Codes'); // nur der nötige Hinweis, kein Aufzählen der Folgen
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
@@ -794,12 +794,12 @@ describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
     await confirm();
 
     expect(await screen.findByRole('status')).toHaveTextContent(/^TOTP zurückgesetzt\. Alle Sitzungen des Kontos sind beendet; die Person muss TOTP neu einrichten.$/);
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/reset-mfa`]);
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/reset-totp`]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('nennt bei offenem Aufruf, dass der Anmeldedienst es noch nicht bestaetigt hat, und zeigt „Abgleich wiederholen“', async () => {
-    const open = withAction(ALLOWED, { open_calls: [{ operation: 'reset_mfa', rejection_code: null }] });
+    const open = withAction(ALLOWED, { open_calls: [{ operation: 'reset_totp', rejection_code: null }] });
     open.account_actions.push({ action: 'resync_login', allowed: true, code: null, reason: null });
     mount({ [path]: { data: RESETTABLE }, [RESET]: { data: open } });
     await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
@@ -814,7 +814,7 @@ describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
 
   it('laesst die Aktion sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
     const reason = 'Bei Konten, die noch nicht angenommen wurden, gibt es kein TOTP zurückzusetzen.';
-    mount({ [path]: { data: withAction({ action: 'reset_mfa', allowed: false, code: 'account_not_active', reason }, { status: 'invited' }) } });
+    mount({ [path]: { data: withAction({ action: 'reset_totp', allowed: false, code: 'account_not_active', reason }, { status: 'invited' }) } });
 
     const button = await screen.findByRole('button', { name: 'TOTP zurücksetzen …' });
 
@@ -843,7 +843,7 @@ describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
   });
 
   it.each([
-    ['self_mfa_reset', 409, 'nicht über die Verwaltung'],
+    ['self_totp_reset', 409, 'nicht über die Verwaltung'],
     ['account_not_active', 409, 'noch nicht angenommen'],
     ['permission_not_held', 403, 'sein TOTP nicht zurücksetzen'],
     ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
