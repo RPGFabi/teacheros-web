@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import App from './App';
 import { fakeClient } from './test/fakeHttp';
+import { createBlock } from './test/roleFixtures';
 
 describe('App-Schale', () => {
   it('zeigt Navigation fuer Lehrkraefte- und Verwaltungsportal mit neutralem Produktnamen', () => {
@@ -100,5 +101,63 @@ describe('Seite Konten in der App-Schale', () => {
 
     expect(screen.queryByRole('button', { name: 'Einladen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Erneut einladen/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Rollen und Rechte/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['roles.manage', 'roles.assign', 'permissions.assign'])('bietet mit %s die Detailansicht eines Kontos an', async (permission) => {
+    await openAccounts(['accounts.view', permission]);
+
+    expect(screen.getByRole('button', { name: 'Rollen und Rechte: neu@schule.test' })).toBeInTheDocument();
+  });
+});
+
+describe('Menuepunkt Rollen (eines der drei Verwaltungsrechte)', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+
+  it.each(['roles.manage', 'roles.assign', 'permissions.assign'])('zeigt Rollen mit %s und oeffnet die Seite', async (permission) => {
+    const { client } = fakeClient({
+      'GET /api/me': { data: ME([permission]) },
+      'GET /api/roles': { data: { roles: [] } },
+      'GET /api/permissions': { data: { permissions: [] } }
+    });
+    render(<App apiClient={client} />);
+
+    const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    await userEvent.click(await within(nav).findByRole('link', { name: 'Rollen' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Rollen' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['roles.manage', true],
+    ['roles.assign', false]
+  ])('Rolle anlegen folgt der Auskunft der API (mit %s erlaubt: %s)', async (permission, enabled) => {
+    const { client } = fakeClient({
+      'GET /api/me': { data: ME([permission]) },
+      'GET /api/roles': { data: { roles: [], create: createBlock({ catalogKeys: [], forbidden: !enabled }) } },
+      'GET /api/permissions': { data: { permissions: [] } }
+    });
+    render(<App apiClient={client} />);
+
+    await userEvent.click(await within(screen.getByRole('navigation', { name: 'Hauptnavigation' })).findByRole('link', { name: 'Rollen' }));
+
+    const button = screen.getByRole('button', { name: 'Rolle anlegen' });
+    if (enabled) {
+      expect(button).toBeEnabled();
+    } else {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it('blendet Rollen ohne eines der drei Rechte aus, auch mit accounts.view', async () => {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(['accounts.view', 'accounts.invite']) } });
+    render(<App apiClient={client} />);
+
+    await screen.findByRole('link', { name: 'Konten' });
+    expect(screen.queryByRole('link', { name: 'Rollen' })).not.toBeInTheDocument();
   });
 });

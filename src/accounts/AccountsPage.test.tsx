@@ -117,6 +117,7 @@ describe('Konten: Einladen', () => {
     ['username_login_disabled', 400, 'Konten ohne E-Mail-Adresse'],
     ['account_disabled', 409, 'Dieses Konto ist gesperrt'],
     ['invalid_request', 400, 'Die Anfrage wurde abgelehnt'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht'],
     ['auth_unavailable', 502, 'Der Anmeldedienst ist gerade nicht erreichbar']
   ])('uebersetzt den Code %s in einen verstaendlichen Text', async (code, status, text) => {
     const { client } = fakeClient({ ...list(ADMIN), 'POST /api/accounts/invitations': { status, data: { error: 'x', code } } });
@@ -282,5 +283,54 @@ describe('Konten: Einladung per Anmeldename mit Einladungskarte', () => {
     expect(within(card).getByText('WXYZ-2345-6789-ABCD')).toBeInTheDocument();
     expect(within(card).getByTestId('invitation-qr')).toHaveAttribute('data-qr-value', 'https://schule.example.test/einladung?code=WXYZ-2345-6789-ABCD');
     expect(screen.getByRole('status')).toHaveTextContent('Erneut eingeladen: schueler.eins');
+  });
+});
+
+describe('Konten: Detailansicht (Ticket #34)', () => {
+  const access = {
+    account: { id: ADMIN.id, email: ADMIN.email, login_name: ADMIN.login_name, status: 'active', mfa_required: true },
+    roles: [],
+    permissions: [],
+    role_actions: [],
+    permission_actions: []
+  };
+  const routes = { ...list(ADMIN, INVITED), [`GET /api/accounts/${ADMIN.id}/access`]: { data: access } };
+
+  it('oeffnet mit einem Verwaltungsrecht die Detailansicht eines Kontos und kehrt zur Liste zurueck', async () => {
+    const { client, calls } = fakeClient(routes);
+    render(<AccountsPage apiClient={client} canInvite={false} canViewAccess canAssignRoles />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollen und Rechte: admin@schule.test' }));
+
+    expect(await screen.findByRole('heading', { name: /admin@schule.test/ })).toBeInTheDocument();
+    expect(calls.some((c) => c.url === `/api/accounts/${ADMIN.id}/access`)).toBe(true);
+    expect(screen.queryByText('neu@schule.test', { selector: 'td' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zurück zur Kontenliste' }));
+    expect(await screen.findByText('neu@schule.test', { selector: 'td' })).toBeInTheDocument();
+  });
+
+  it('reicht permissions.assign an die Detailansicht weiter (Ticket #36)', async () => {
+    const withAction = {
+      ...access,
+      permission_actions: [{ permission: 'accounts.view', name: 'Konten ansehen', group: 'Konten', action: 'grant', allowed: true, code: null, reason: null }]
+    };
+    const { client } = fakeClient({ ...routes, [`GET /api/accounts/${ADMIN.id}/access`]: { data: withAction } });
+    const { unmount } = render(<AccountsPage apiClient={client} canInvite={false} canViewAccess canAssignPermissions />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollen und Rechte: admin@schule.test' }));
+    expect(await screen.findByRole('button', { name: 'Einzelrecht gewähren: Konten ansehen' })).toBeEnabled();
+    unmount();
+
+    render(<AccountsPage apiClient={client} canInvite={false} canViewAccess />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Rollen und Rechte: admin@schule.test' }));
+    expect(await screen.findByRole('button', { name: 'Einzelrecht gewähren: Konten ansehen' })).toBeDisabled();
+  });
+
+  it('zeigt ohne Verwaltungsrecht keine Detail-Schaltflaeche', async () => {
+    const { client } = fakeClient(routes);
+    render(<AccountsPage apiClient={client} canInvite={false} />);
+
+    await screen.findByText('neu@schule.test', { selector: 'td' });
+    expect(screen.queryByRole('button', { name: /Rollen und Rechte/ })).not.toBeInTheDocument();
   });
 });
