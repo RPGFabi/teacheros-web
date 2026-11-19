@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
+import { Button, Card, Checkbox, Chip, ConfirmDialog, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { classFormProblem, describeClassFailure, MAX_GRADE_LEVEL, MIN_GRADE_LEVEL, type SchoolClass } from './classes';
+import ClassEditForm from './ClassEditForm';
+import { classFormProblem, describeClassFailure, MAX_GRADE_LEVEL, MIN_GRADE_LEVEL, type ClassAction, type SchoolClass } from './classes';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -12,7 +13,10 @@ interface Props {
 
 /**
  * Die Klassen eines Schuljahres (Ticket #55): Liste nach Klassenstufe und Bezeichnung in der Reihenfolge der API und, mit
- * `classes.manage`, das Anlegen. Gebraucht auf der Seite „Klassen“ und in der Detailansicht eines Schuljahres. Die
+ * `classes.manage`, das Anlegen sowie (Ticket #57) Bearbeiten, Archivieren, Wiederherstellen und Loeschen (mit Bestaetigung).
+ * Archivierte Klassen (Glossar: Archivierung) sind ausgeblendet und mit dem Schalter „Archivierte anzeigen“ sichtbar, dann
+ * markiert und nur wiederherstellbar oder loeschbar. Ob eine Klasse verknuepft ist, entscheidet allein die API (`class_linked`).
+ * Gebraucht auf der Seite „Klassen“ und in der Detailansicht eines Schuljahres. Die
  * Tabelle wird auf dem Smartphone per CSS zu Karten (`data-label` je Zelle). Beim Wechsel des Schuljahres neu mounten
  * (`key`), dann beginnen Eingaben und Meldungen frisch.
  */
@@ -21,6 +25,9 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
   const [loadError, setLoadError] = useState(false);
   const [gradeLevel, setGradeLevel] = useState('');
   const [name, setName] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editing, setEditing] = useState<SchoolClass | null>(null);
+  const [deleting, setDeleting] = useState<SchoolClass | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,12 +35,13 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const response = await apiClient.get<{ classes: SchoolClass[] }>('/api/classes', { params: { school_year_id: schoolYear.id } });
+      const params = showArchived ? { school_year_id: schoolYear.id, include_archived: 1 } : { school_year_id: schoolYear.id };
+      const response = await apiClient.get<{ classes: SchoolClass[] }>('/api/classes', { params });
       setClasses(response.data.classes);
     } catch {
       setLoadError(true);
     }
-  }, [apiClient, schoolYear.id]);
+  }, [apiClient, schoolYear.id, showArchived]);
 
   useEffect(() => {
     void load();
@@ -69,8 +77,52 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
     await load();
   };
 
+  /**
+   * Fuehrt eine Aktion auf einer Klasse aus: Meldung bei Erfolg oder Fehler, danach immer neu laden (die Liste kann sich
+   * inzwischen geaendert haben). Liefert, ob die Aktion gelang.
+   */
+  const run = async (action: ClassAction, request: () => Promise<unknown>, success: string): Promise<boolean> => {
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    let ok = false;
+    try {
+      await request();
+      setNotice(success);
+      ok = true;
+    } catch (err) {
+      setError(describeClassFailure(err, action));
+    } finally {
+      setBusy(false);
+    }
+    await load();
+    return ok;
+  };
+
+  const save = async (target: SchoolClass, grade: number, newName: string) => {
+    if (await run('update', () => apiClient.post(`/api/classes/${target.id}/update`, { grade_level: grade, name: newName }), `Klasse ${newName} gespeichert.`)) {
+      setEditing(null);
+    }
+  };
+
+  const remove = async (target: SchoolClass) => {
+    setDeleting(null);
+    if (await run('delete', () => apiClient.post(`/api/classes/${target.id}/delete`), `Klasse ${target.name} gelöscht.`) && editing?.id === target.id) {
+      setEditing(null);
+    }
+  };
+
   return (
     <>
+      {canManage && editing && !editing.archived && (
+        <ClassEditForm
+          key={editing.id}
+          schoolClass={editing}
+          busy={busy}
+          onSubmit={(grade, newName) => void save(editing, grade, newName)}
+          onCancel={() => setEditing(null)}
+        />
+      )}
       {canManage && (
         <Card>
           <form aria-label="Klasse anlegen" onSubmit={(event) => void submit(event)}>
@@ -101,7 +153,17 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
       )}
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Klasse ${deleting?.name ?? ''} löschen?`}
+        description={`Klasse ${deleting?.name ?? ''} (Schuljahr ${schoolYear.name}) wird endgültig gelöscht. Das lässt sich nicht rückgängig machen. Ist an der Klasse schon etwas verknüpft, wird sie nicht gelöscht; dann bleibt das Archivieren.`}
+        confirmText="Löschen"
+        variant="danger"
+        onConfirm={() => deleting && void remove(deleting)}
+        onCancel={() => setDeleting(null)}
+      />
       <Card>
+        <Checkbox label="Archivierte anzeigen" checked={showArchived} onChange={() => setShowArchived((value) => !value)} />
         {loadError && (
           <>
             <p role="alert">Die Klassen konnten nicht geladen werden.</p>
@@ -116,13 +178,52 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
               <tr>
                 <th scope="col">Klasse</th>
                 <th scope="col">Klassenstufe</th>
+                {canManage && <th scope="col">Aktionen</th>}
               </tr>
             </thead>
             <tbody>
               {classes.map((c) => (
                 <tr key={c.id}>
-                  <th scope="row">{c.name}</th>
+                  <th scope="row">
+                    {c.name}
+                    {c.archived && (
+                      <>
+                        {' '}
+                        <Chip variant="neutral">Archiviert</Chip>
+                      </>
+                    )}
+                  </th>
                   <td data-label="Klassenstufe">{c.grade_level}</td>
+                  {canManage && (
+                    <td data-label="Aktionen">
+                      {!c.archived && (
+                        <>
+                          <Button variant="secondary" disabled={busy} aria-label={`Bearbeiten: ${c.name}`} onClick={() => setEditing(c)}>Bearbeiten</Button>{' '}
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            aria-label={`Archivieren: ${c.name}`}
+                            onClick={() => void run('archive', () => apiClient.post(`/api/classes/${c.id}/archive`), `Klasse ${c.name} archiviert.`)}
+                          >
+                            Archivieren
+                          </Button>{' '}
+                        </>
+                      )}
+                      {c.archived && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            aria-label={`Wiederherstellen: ${c.name}`}
+                            onClick={() => void run('restore', () => apiClient.post(`/api/classes/${c.id}/restore`), `Klasse ${c.name} wiederhergestellt.`)}
+                          >
+                            Wiederherstellen
+                          </Button>{' '}
+                        </>
+                      )}
+                      <Button variant="secondary" disabled={busy} aria-label={`Löschen: ${c.name}`} onClick={() => setDeleting(c)}>Löschen</Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
