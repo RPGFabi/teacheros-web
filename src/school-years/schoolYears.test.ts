@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { describeSchoolYearFailure, formatDay, previewName, statusLabel } from './schoolYears';
+import { defaultSchoolYear, describeSchoolYearFailure, formatDay, previewName, statusLabel } from './schoolYears';
+
+const year = (id: string, status: string) => ({ id, name: id, starts_on: '2000-09-01', ends_on: '2001-07-31', status });
+
+describe('Vorauswahl des Schuljahres', () => {
+  it('waehlt das laufende Schuljahr', () => {
+    expect(defaultSchoolYear([year('a', 'past'), year('b', 'running'), year('c', 'upcoming')])?.id).toBe('b');
+  });
+
+  it('waehlt ohne laufendes das zuletzt vergangene (die API liefert nach Beginn aufsteigend)', () => {
+    expect(defaultSchoolYear([year('a', 'past'), year('b', 'past'), year('c', 'upcoming')])?.id).toBe('b');
+  });
+
+  it('waehlt ohne laufendes und ohne vergangenes das naechste kommende, also das erste', () => {
+    expect(defaultSchoolYear([year('a', 'upcoming'), year('b', 'upcoming')])?.id).toBe('a');
+  });
+
+  it('waehlt nichts, wenn es kein Schuljahr gibt', () => {
+    expect(defaultSchoolYear([])).toBeUndefined();
+  });
+});
 
 describe('Vorschau der Bezeichnung (wie die API: Jahr des Beginns / letzte zwei Ziffern des Endjahres)', () => {
   it('erzeugt 2026/27 aus 14.09.2026 bis 29.07.2027', () => {

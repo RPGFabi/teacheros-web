@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, FormField, Select } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { statusLabel, type SchoolYear } from '../school-years/schoolYears';
+import { defaultSchoolYear, statusLabel, type SchoolYear } from '../school-years/schoolYears';
 import ClassesPanel from './ClassesPanel';
-import { defaultSchoolYear } from './classes';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -12,7 +11,7 @@ interface Props {
 }
 
 /**
- * Seite „Klassen“ (Ticket #55): Schuljahr waehlen, vorausgewaehlt das laufende, sonst das zuletzt vergangene, und die Klassen
+ * Seite „Klassen“ (Ticket #55): Schuljahr waehlen, vorausgewaehlt das laufende, sonst das zuletzt vergangene, sonst das naechste kommende, und die Klassen
  * dieses Schuljahres sehen und, mit `classes.manage`, anlegen. Nutzbar mit nur `classes.view`: die Schuljahre kommen von
  * `GET /api/classes/school-years`, nicht von der Schuljahr-Liste, die `school_years.view` braucht.
  */

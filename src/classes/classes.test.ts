@@ -1,26 +1,9 @@
 import { AxiosError } from 'axios';
 import { describe, expect, it } from 'vitest';
-import { classFormProblem, defaultSchoolYear, describeClassFailure } from './classes';
-
-const year = (id: string, status: string) => ({ id, name: id, starts_on: '2000-09-01', ends_on: '2001-07-31', status });
+import { classFormProblem, describeClassFailure } from './classes';
 
 const failure = (status: number, code?: string) =>
   new AxiosError('x', 'ERR_BAD_REQUEST', undefined, null, { data: code ? { error: 'x', code } : {}, status, statusText: '', headers: {}, config: {} as never });
-
-describe('Vorauswahl des Schuljahres', () => {
-  it('waehlt das laufende Schuljahr', () => {
-    expect(defaultSchoolYear([year('a', 'past'), year('b', 'running'), year('c', 'upcoming')])?.id).toBe('b');
-  });
-
-  it('waehlt ohne laufendes das zuletzt vergangene (die API liefert nach Beginn aufsteigend)', () => {
-    expect(defaultSchoolYear([year('a', 'past'), year('b', 'past')])?.id).toBe('b');
-  });
-
-  it('waehlt nichts, wenn es kein laufendes und kein vergangenes Schuljahr gibt', () => {
-    expect(defaultSchoolYear([])).toBeUndefined();
-    expect(defaultSchoolYear([year('a', 'upcoming')])).toBeUndefined();
-  });
-});
 
 describe('Pruefung des Formulars', () => {
   it.each([

@@ -42,6 +42,13 @@ describe('Klassen: Schuljahr-Auswahl und Liste', () => {
     expect(await screen.findByLabelText('Schuljahr')).toHaveValue('sy-2');
   });
 
+  it('waehlt ohne laufendes und ohne vergangenes Schuljahr das naechste kommende vor', async () => {
+    const { client } = fakeClient({ ...yearsRoute({ ...Y2627, status: 'upcoming' }, Y2728), ...classesRoute({}) });
+    render(<ClassesPage apiClient={client} canManage={false} />);
+
+    expect(await screen.findByLabelText('Schuljahr')).toHaveValue('sy-2');
+  });
+
   it('laedt die Klassen eines anderen Schuljahres nach der Auswahl', async () => {
     const { client } = fakeClient({
       ...yearsRoute(Y2526, Y2627),

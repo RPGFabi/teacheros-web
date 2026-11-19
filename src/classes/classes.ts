@@ -1,5 +1,4 @@
 import { errorCode } from '../api/errors';
-import type { SchoolYear } from '../school-years/schoolYears';
 
 /**
  * Klasse laut `GET /api/classes` (Tickets #55, #57); gehoert unveraenderlich zu genau einem Schuljahr (Glossar: Klasse).
@@ -17,15 +16,6 @@ export interface SchoolClass {
 export const MIN_GRADE_LEVEL = 1;
 export const MAX_GRADE_LEVEL = 13;
 export const MAX_NAME_LENGTH = 20;
-
-/**
- * Vorausgewaehltes Schuljahr der Seite „Klassen“: das laufende, sonst das zuletzt vergangene. Das ist dieselbe Regel wie der
- * Status der API (laufend ist auch das naechste kommende, wenn heute in einer Luecke liegt); hier wird nur der fertige
- * Status gelesen, nichts aus Daten berechnet. `years` kommt nach Beginn aufsteigend. Ohne beides gibt es keine Vorauswahl.
- */
-export function defaultSchoolYear<T extends Pick<SchoolYear, 'status'>>(years: T[]): T | undefined {
-  return years.find((y) => y.status === 'running') ?? [...years].reverse().find((y) => y.status === 'past');
-}
 
 /**
  * Hinweis zu den Eingaben des Anlegen-Formulars oder `undefined`, wenn sie passen. Wie in der API: Klassenstufe ganze
