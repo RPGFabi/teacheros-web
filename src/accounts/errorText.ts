@@ -75,7 +75,19 @@ export function describeFailure(err: unknown, flow: Flow): string {
   }
 }
 
-/** Was die fachliche Ablehnung des Anmeldedienstes beim Abgleich bedeutet (`account.login_sync_error`); andere Codes erscheinen allgemein. */
+/**
+ * Was ein offener Aufruf bedeutet (Ticket #47), je `operation`. Ein neuer Aufruf (Widerruf, Zuruecksetzung) traegt hier
+ * seinen Satz ein; bis dahin nennt die Ansicht ihn allgemein mit dem Namen.
+ */
+const OPEN_CALL_TEXT: Record<string, string> = {
+  disable_login: 'Das Konto ist hier deaktiviert und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet.'
+};
+
+export function openCallText(operation: string): string {
+  return OPEN_CALL_TEXT[operation] ?? `Ein Aufruf an den Anmeldedienst (${operation}) ist noch offen.`;
+}
+
+/** Was die fachliche Ablehnung des Anmeldedienstes bei einem offenen Aufruf bedeutet (`open_calls[].rejection_code`); andere Codes erscheinen allgemein. */
 export function syncRejectionText(code: string): string {
   return code === 'user_not_found' ? AUTH_SERVICE_UNKNOWN_ACCOUNT : `Der Anmeldedienst hat den Abgleich abgelehnt (${code}).`;
 }

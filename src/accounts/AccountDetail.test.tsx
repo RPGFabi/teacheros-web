@@ -405,10 +405,11 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
   const PENDING: AccountAccess = {
     ...ACCESS,
-    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: true },
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked' },
+    open_calls: [{ operation: 'disable_login', rejection_code: null }],
     account_actions: [BLOCKED_DEACTIVATE, { action: 'resync_login', allowed: true, code: null, reason: null }]
   };
-  const SYNCED: AccountAccess = { ...PENDING, account: { ...PENDING.account, login_sync_pending: false }, account_actions: [BLOCKED_DEACTIVATE] };
+  const SYNCED: AccountAccess = { ...PENDING, open_calls: [], account_actions: [BLOCKED_DEACTIVATE] };
 
   it('zeigt den Hinweis „Abgleich mit dem Anmeldedienst offen“ und den Knopf „Abgleich wiederholen“', async () => {
     mount({ [path]: { data: PENDING } });
@@ -428,7 +429,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   });
 
   it('nennt bei fachlicher Ablehnung des Anmeldedienstes den Grund verstaendlich statt nur „Abgleich offen“', async () => {
-    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'user_not_found' } } } });
+    mount({ [path]: { data: { ...PENDING, open_calls: [{ operation: 'disable_login', rejection_code: 'user_not_found' }] } } });
 
     const section = await screen.findByRole('region', { name: 'Konto' });
     expect(within(section).getByText(/Der Anmeldedienst kennt dieses Konto nicht/)).toBeInTheDocument();
@@ -436,7 +437,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   });
 
   it('nennt bei einem unbekannten Ablehnungscode den Code allgemein', async () => {
-    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'seltsam' } } } });
+    mount({ [path]: { data: { ...PENDING, open_calls: [{ operation: 'disable_login', rejection_code: 'seltsam' }] } } });
 
     expect(await screen.findByText(/Der Anmeldedienst hat den Abgleich abgelehnt \(seltsam\)/)).toBeInTheDocument();
   });
@@ -524,6 +525,37 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/^Konto deaktiviert\.$/);
   });
 
+  it('listet mehrere offene Aufrufe, jeden mit seinem eigenen Grund (Ticket #47)', async () => {
+    mount({
+      [path]: {
+        data: {
+          ...PENDING,
+          open_calls: [
+            { operation: 'disable_login', rejection_code: 'user_not_found' },
+            { operation: 'revoke_sessions', rejection_code: null },
+            { operation: 'reset_mfa', rejection_code: 'seltsam' }
+          ]
+        }
+      }
+    });
+
+    const list = within(await screen.findByRole('region', { name: 'Konto' })).getByRole('list', { name: 'Offene Aufrufe' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent('Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet');
+    expect(items[0]).toHaveTextContent('Der Anmeldedienst kennt dieses Konto nicht');
+    expect(items[1]).toHaveTextContent('revoke_sessions');
+    expect(items[1]).not.toHaveTextContent(/abgelehnt/);
+    expect(items[2]).toHaveTextContent('Der Anmeldedienst hat den Abgleich abgelehnt (seltsam)');
+  });
+
+  it('zeigt „Abgleich wiederholen“ nur einmal, auch bei mehreren offenen Aufrufen', async () => {
+    mount({ [path]: { data: { ...PENDING, open_calls: [{ operation: 'disable_login', rejection_code: null }, { operation: 'revoke_sessions', rejection_code: null }] } } });
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.getAllByRole('button', { name: 'Abgleich wiederholen' })).toHaveLength(1);
+  });
+
   it('kennzeichnet den Abgleich auch in der Statuszeile', async () => {
     mount({ [path]: { data: PENDING } });
 
@@ -536,10 +568,11 @@ describe('Kontodetail: Konto reaktivieren (Ticket #43)', () => {
   const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
   const INACTIVE: AccountAccess = {
     ...ACCESS,
-    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: false },
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked' },
+    open_calls: [],
     account_actions: [BLOCKED_DEACTIVATE, { action: 'reactivate', allowed: true, code: null, reason: null }]
   };
-  const ACTIVE_AGAIN: AccountAccess = { ...ACCESS, account: { ...ACCESS.account, login_sync_pending: false } };
+  const ACTIVE_AGAIN: AccountAccess = { ...ACCESS, open_calls: [] };
 
   it('zeigt „Reaktivieren“ aktiv bei einem deaktivierten Konto, wenn die API die Aktion erlaubt', async () => {
     mount({ [path]: { data: INACTIVE } });

@@ -4,7 +4,7 @@ import type { AxiosInstance } from 'axios';
 import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
 import type { AccountAccess, PermissionAction, RoleAction } from './access';
 import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
-import { describeFailure, loadFailureText, syncRejectionText, type Flow } from './errorText';
+import { describeFailure, loadFailureText, openCallText, syncRejectionText, type Flow } from './errorText';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -17,6 +17,7 @@ interface Props {
 }
 
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
+const NO_OPEN_CALLS: never[] = [];
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
 
@@ -37,8 +38,9 @@ const PERMISSION_VERBS = {
  * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
  * Reaktivierung (Ticket #43): bei einem deaktivierten Konto steht im Abschnitt „Konto“ „Reaktivieren“ (Aktion `reactivate`,
  * gesperrt sichtbar mit Begruendung); die API ruft zuerst den Anmeldedienst, bei Fehlschlag bleibt das Konto deaktiviert.
- * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Deaktivierung dort noch nicht gemeldet (`login_sync_pending`), steht im
- * Abschnitt „Konto“ ein Hinweis und „Abgleich wiederholen“ (Aktion `resync_login`, gesperrt sichtbar ohne Recht).
+ * Abgleich mit dem Anmeldedienst (Tickets #42, #47): ist ein Aufruf dort noch offen (`open_calls`, z. B. die Deaktivierung), steht im
+ * Abschnitt „Konto“ je offenem Aufruf ein Satz mit dem Grund der Ablehnung und einmal „Abgleich wiederholen“ (Aktion
+ * `resync_login`, holt alle nach; gesperrt sichtbar ohne Recht).
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, canAssignPermissions = false, onBack }: Props) {
   const [access, setAccess] = useState<AccountAccess | null>(null);
@@ -97,7 +99,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
 
   function deactivate() {
     setConfirmingDeactivation(false);
-    return perform('deactivate', () => post('deactivate'), (data) => (data.account.login_sync_pending ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
+    return perform('deactivate', () => post('deactivate'), (data) => (data.open_calls?.length ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
   }
 
   const reactivate = () => perform('reactivate', () => post('reactivate'), () => 'Konto reaktiviert.');
@@ -158,7 +160,8 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
   const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
-  const resyncAction = access.account.login_sync_pending ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
+  const openCalls = access.open_calls ?? NO_OPEN_CALLS;
+  const resyncAction = openCalls.length > 0 ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
   const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
   const accountName = access.account.email ?? access.account.login_name;
 
@@ -199,7 +202,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <h1>{access.account.email ?? access.account.login_name}</h1>
       <p>
         Anmeldename {access.account.login_name} · {statusLabel(access.account.status, access.account.inactive_since)}
-        {access.account.login_sync_pending ? ` (${SYNC_PENDING_LABEL})` : ''} · Erfordert MFA:{' '}
+        {openCalls.length > 0 ? ` (${SYNC_PENDING_LABEL})` : ''} · Erfordert MFA:{' '}
         {access.account.mfa_required ? 'Ja' : 'Nein'}
       </p>
       {notice && <p role="status">{notice}</p>}
@@ -243,10 +246,14 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
           {resyncAction && (
             <>
               <h3>Abgleich mit dem Anmeldedienst offen</h3>
-              <p>
-                Das Konto ist hier deaktiviert und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet, bis der Abgleich gelingt.
-              </p>
-              {access.account.login_sync_error && <p>{syncRejectionText(access.account.login_sync_error)}</p>}
+              <ul aria-label="Offene Aufrufe">
+                {openCalls.map((call) => (
+                  <li key={call.operation}>
+                    {openCallText(call.operation)}
+                    {call.rejection_code && <> {syncRejectionText(call.rejection_code)}</>}
+                  </li>
+                ))}
+              </ul>
               <Button
                 variant="secondary"
                 disabled={busy || resyncBlocked !== null}

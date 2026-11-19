@@ -53,6 +53,17 @@ export interface AccountAction {
 }
 
 /**
+ * Ein offener Aufruf an den Anmeldedienst („Abgleich offen“, Ticket #47): eine lokal schon wirksame Aenderung, die der
+ * Dienst noch nicht bestaetigt hat. `operation` ist heute `disable_login` (Sperre); Widerruf (`revoke_sessions`) und
+ * Zuruecksetzung (`reset_mfa`) folgen. `rejection_code` ist der Code der letzten fachlichen Ablehnung, null bei
+ * Nichterreichbarkeit.
+ */
+export interface OpenCall {
+  operation: string;
+  rejection_code: string | null;
+}
+
+/**
  * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
  * Verwaltungsrecht oder `accounts.deactivate`); nur dann liefert sie auch E-Mail, Anmeldename und Status. Rollen und Rechte
  * (`roles`, `permissions`, `role_actions`, `permission_actions`) liefert die API nur, wenn der Betrachter eines der drei
@@ -68,12 +79,10 @@ export interface AccountAccess {
     inactive_since: string | null;
     /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
     inactive_reason: string | null;
-    /** „Abgleich offen“: die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). Fehlt ohne `accounts.view`. */
-    login_sync_pending?: boolean;
-    /** Code, mit dem der Anmeldedienst den Abgleich fachlich abgelehnt hat (z. B. `user_not_found`); null bei Nichterreichbarkeit (Review #12). */
-    login_sync_error?: string | null;
     mfa_required: boolean;
   };
+  /** „Abgleich offen“ (Tickets #42, #47): die offenen Aufrufe in der Reihenfolge des Nachholens; leer, wenn nichts offen ist. Fehlt ohne `accounts.view`. */
+  open_calls?: OpenCall[];
   roles?: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
   permissions?: PermissionRow[];
   role_actions?: RoleAction[];
