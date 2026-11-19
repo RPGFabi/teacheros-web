@@ -3,8 +3,7 @@ import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { portals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
-import { ADMINISTRATION_PERMISSIONS, hasPermission } from './account/permissions';
-import { errorCode } from './api/errors';
+import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import { apiClient as defaultApiClient } from './api/client';
@@ -20,10 +19,8 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
     apiClient
       .get<Me>('/api/me')
       .then((response) => !cancelled && setMe(response.data))
-      .catch((err) => {
-        if (cancelled) return;
-        setMeError(errorCode(err) === 'account_inactive' ? 'Ihr Konto ist nicht aktiv. Bitte wenden Sie sich an die Schuladministration.' : 'Die Kontodaten konnten nicht geladen werden.');
-      });
+      // Ein gesperrtes Konto (401 account_inactive) meldet der Gate in Root ab und erklaert es auf der Anmeldeseite.
+      .catch(() => !cancelled && setMeError('Die Kontodaten konnten nicht geladen werden.'));
     return () => {
       cancelled = true;
     };
@@ -71,7 +68,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         <AccountsPage
           apiClient={apiClient}
           canInvite={hasPermission(me, 'accounts.invite')}
-          canViewAccess={hasPermission(me, 'accounts.view') && ADMINISTRATION_PERMISSIONS.some((permission) => hasPermission(me, permission))}
+          canViewAccess={hasPermission(me, 'accounts.view') && ACCOUNT_DETAIL_PERMISSIONS.some((permission) => hasPermission(me, permission))}
           canAssignRoles={hasPermission(me, 'roles.assign')}
           canAssignPermissions={hasPermission(me, 'permissions.assign')}
         />

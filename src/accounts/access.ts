@@ -42,15 +42,43 @@ export interface PermissionAction {
 }
 
 /**
+ * Eine Aktion am Konto selbst (Ticket #41: `deactivate`; Ticket #42: `resync_login` = „Abgleich wiederholen“, nur solange
+ * der Abgleich offen ist; Ticket #43: `reactivate`, nur bei deaktivierten Konten); gesperrt mit Code und deutscher Begruendung.
+ */
+export interface AccountAction {
+  action: 'deactivate' | 'resync_login' | 'reactivate';
+  allowed: boolean;
+  code: string | null;
+  reason: string | null;
+}
+
+/**
  * Lesesicht eines Kontos. Die Detailansicht gibt es nur mit `accounts.view` (die API verlangt es zusaetzlich zu einem
- * Verwaltungsrecht); nur dann liefert sie auch E-Mail, Anmeldename und Status.
+ * Verwaltungsrecht oder `accounts.deactivate`); nur dann liefert sie auch E-Mail, Anmeldename und Status. Rollen und Rechte
+ * (`roles`, `permissions`, `role_actions`, `permission_actions`) liefert die API nur, wenn der Betrachter eines der drei
+ * Verwaltungsrechte hat; sonst fehlen sie, und die Ansicht zeigt nur das Konto.
  */
 export interface AccountAccess {
-  account: { id: string; email: string | null; login_name: string; status: string; mfa_required: boolean };
-  roles: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
-  permissions: PermissionRow[];
-  role_actions: RoleAction[];
-  permission_actions: PermissionAction[];
+  account: {
+    id: string;
+    email: string | null;
+    login_name: string;
+    status: string;
+    /** ISO 8601 (UTC) der Deaktivierung, sonst null (Ticket #41). */
+    inactive_since: string | null;
+    /** Grund der Deaktivierung, z. B. `admin_locked`, sonst null. */
+    inactive_reason: string | null;
+    /** „Abgleich offen“: die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). Fehlt ohne `accounts.view`. */
+    login_sync_pending?: boolean;
+    /** Code, mit dem der Anmeldedienst den Abgleich fachlich abgelehnt hat (z. B. `user_not_found`); null bei Nichterreichbarkeit (Review #12). */
+    login_sync_error?: string | null;
+    mfa_required: boolean;
+  };
+  roles?: { id: string; key: string; name: string; protection: string; requires_mfa: boolean }[];
+  permissions?: PermissionRow[];
+  role_actions?: RoleAction[];
+  permission_actions?: PermissionAction[];
+  account_actions: AccountAction[];
 }
 
 /** Anzeigetext einer Herkunft. */

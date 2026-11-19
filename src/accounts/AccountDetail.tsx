@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card } from '@hoelzle/react-ui';
+import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { errorCode } from '../api/errors';
-import { statusLabel } from '../account/status';
+import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
 import type { AccountAccess, PermissionAction, RoleAction } from './access';
 import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
+import { describeFailure, loadFailureText, syncRejectionText, type Flow } from './errorText';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -16,33 +16,15 @@ interface Props {
   onBack: () => void;
 }
 
-/** Verstaendliche Texte fuer die Fehlercodes der API beim Vergeben, Entziehen, Gewaehren und Zuruecksetzen (Rollen wie Einzelrechte). */
-const ERROR_TEXT: Record<string, string> = {
-  self_escalation: 'Sie können sich selbst keine Rollen oder Einzelrechte geben, entziehen oder zurücksetzen.',
-  permission_not_held: 'Sie besitzen nicht alle dafür nötigen Rechte und dürfen deshalb nichts vergeben, entziehen oder zurücksetzen.',
-  student_role_exclusive: 'Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte.',
-  admin_overrides_forbidden: 'Konten mit der Rolle Schuladmin haben keine Einzelrechte; Konten mit Einzelrechten können nicht Schuladmin werden. Setzen Sie die Einzelrechte zuerst zurück.',
-  last_admin: 'Das ist der letzte aktive Schuladmin. Ernennen Sie zuerst einen weiteren Schuladmin, der sich schon angemeldet hat.',
-  unknown_permission: 'Dieses Recht gibt es nicht.',
-  role_not_found: 'Diese Rolle gibt es nicht mehr.',
-  account_not_found: 'Dieses Konto gibt es nicht mehr.',
-  forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.'
-};
-
+const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
-const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
   grant: { button: 'Gewähren', label: 'Einzelrecht gewähren', done: 'gewährt' },
   withdraw: { button: 'Entziehen', label: 'Einzelrecht entziehen', done: 'entzogen' },
   clear: { button: 'Zurücksetzen', label: 'Einzelrecht zurücksetzen', done: 'zurückgesetzt' }
 } as const;
-
-function describeFailure(err: unknown): string {
-  const code = errorCode(err);
-  return (code !== undefined && ERROR_TEXT[code]) || SAVE_FAILED;
-}
 
 /**
  * Detailansicht eines Kontos (Ticket #34): Rollen einzeln hinzufuegen und entziehen, effektive Rechte mit Herkunft.
@@ -51,6 +33,12 @@ function describeFailure(err: unknown): string {
  * Einzelrechte (Ticket #36) folgen demselben Muster ueber `permission_actions`: ein Abschnitt mit allen Katalogrechten,
  * je Recht die eine moegliche Aktion (gewaehren, entziehen, zuruecksetzen). Der letzte aktive Schuladmin (Ticket #35,
  * `last_admin`) kommt als gesperrte Aktion mit Begruendung in `role_actions`.
+ * Konto deaktivieren (Ticket #41): „Deaktivieren …“ mit Bestaetigungsdialog; ob die Aktion erlaubt ist, sagt die API in
+ * `account_actions` (auch das Recht `accounts.deactivate` und die Regeln), sonst bleibt sie gesperrt sichtbar.
+ * Reaktivierung (Ticket #43): bei einem deaktivierten Konto steht im Abschnitt „Konto“ „Reaktivieren“ (Aktion `reactivate`,
+ * gesperrt sichtbar mit Begruendung); die API ruft zuerst den Anmeldedienst, bei Fehlschlag bleibt das Konto deaktiviert.
+ * Abgleich mit dem Anmeldedienst (Ticket #42): ist die Deaktivierung dort noch nicht gemeldet (`login_sync_pending`), steht im
+ * Abschnitt „Konto“ ein Hinweis und „Abgleich wiederholen“ (Aktion `resync_login`, gesperrt sichtbar ohne Recht).
  */
 export default function AccountDetail({ apiClient, accountId, canAssign, canAssignPermissions = false, onBack }: Props) {
   const [access, setAccess] = useState<AccountAccess | null>(null);
@@ -58,13 +46,14 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
     try {
       setAccess((await apiClient.get<AccountAccess>(`/api/accounts/${accountId}/access`)).data);
     } catch (err) {
-      setLoadError(errorCode(err) === 'account_not_found' ? ERROR_TEXT.account_not_found : 'Das Konto konnte nicht geladen werden.');
+      setLoadError(loadFailureText(err));
     }
   }, [apiClient, accountId]);
 
@@ -72,40 +61,48 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     void load();
   }, [load]);
 
-  async function change(role: RoleAction) {
+  /**
+   * Der gemeinsame Ablauf jeder Aenderung: die Antwort der API ist die neue Sicht; bei einem Fehler erscheint der Text zur
+   * Aktion und die Sicht wird neu geladen.
+   */
+  async function perform(flow: Flow, request: () => Promise<AccountAccess>, done: (data: AccountAccess) => string) {
     setBusy(true);
     setNotice(null);
     setError(null);
     try {
-      const assigning = role.action === 'assign';
-      const { data } = assigning
-        ? await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/roles`, { role_id: role.role_id })
-        : await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/roles/${role.role_id}/revoke`);
+      const data = await request();
       setAccess(data);
-      setNotice(assigning ? `Rolle ${role.role_name} vergeben.` : `Rolle ${role.role_name} entzogen.`);
+      setNotice(done(data));
     } catch (err) {
-      setError(describeFailure(err));
+      setError(describeFailure(err, flow));
       await load();
     } finally {
       setBusy(false);
     }
   }
 
-  async function changePermission(item: PermissionAction) {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const { data } = await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/permissions/${item.action}`, { permission: item.permission });
-      setAccess(data);
-      setNotice(`Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
-    } catch (err) {
-      setError(describeFailure(err));
-      await load();
-    } finally {
-      setBusy(false);
-    }
+  const post = async (suffix: string, body?: unknown) => (await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/${suffix}`, body)).data;
+
+  const change = (role: RoleAction) => {
+    const assigning = role.action === 'assign';
+    return perform(
+      'assign',
+      () => (assigning ? post('roles', { role_id: role.role_id }) : post(`roles/${role.role_id}/revoke`)),
+      () => (assigning ? `Rolle ${role.role_name} vergeben.` : `Rolle ${role.role_name} entzogen.`)
+    );
+  };
+
+  const changePermission = (item: PermissionAction) =>
+    perform('assign', () => post(`permissions/${item.action}`, { permission: item.permission }), () => `Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
+
+  function deactivate() {
+    setConfirmingDeactivation(false);
+    return perform('deactivate', () => post('deactivate'), (data) => (data.account.login_sync_pending ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
   }
+
+  const reactivate = () => perform('reactivate', () => post('reactivate'), () => 'Konto reaktiviert.');
+
+  const resync = () => perform('resync', () => post('resync-login'), () => 'Abgleich mit dem Anmeldedienst nachgeholt.');
 
   const back = <Button variant="secondary" onClick={onBack}>Zurück zur Kontenliste</Button>;
 
@@ -127,8 +124,11 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     );
   }
 
-  const held = access.role_actions.filter((a) => a.action === 'revoke');
-  const available = access.role_actions.filter((a) => a.action === 'assign');
+  // Rollen und Rechte liefert die API nur mit einem der drei Verwaltungsrechte; sonst zeigt die Ansicht nur das Konto.
+  const { permissions, role_actions: roleActions, permission_actions: permissionActions } = access;
+  const showsAccess = permissions !== undefined && roleActions !== undefined && permissionActions !== undefined;
+  const held = (roleActions ?? []).filter((a) => a.action === 'revoke');
+  const available = (roleActions ?? []).filter((a) => a.action === 'assign');
 
   const roleRow = (role: RoleAction, label: string) => {
     const blocked = !canAssign ? NO_RIGHT_REASON : role.allowed ? null : (role.reason ?? 'Diese Aktion ist nicht erlaubt.');
@@ -154,8 +154,16 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     );
   };
 
+  const deactivation = access.account_actions.find((a) => a.action === 'deactivate');
+  const deactivationBlocked = deactivation?.allowed ? null : (deactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const reactivation = access.account_actions.find((a) => a.action === 'reactivate');
+  const reactivationBlocked = reactivation?.allowed ? null : (reactivation?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const resyncAction = access.account.login_sync_pending ? access.account_actions.find((a) => a.action === 'resync_login') : undefined;
+  const resyncBlocked = resyncAction?.allowed ? null : (resyncAction?.reason ?? 'Diese Aktion ist nicht erlaubt.');
+  const accountName = access.account.email ?? access.account.login_name;
+
   const permissionRow = (item: PermissionAction) => {
-    const row = access.permissions.find((p) => p.key === item.permission);
+    const row = permissions?.find((p) => p.key === item.permission);
     const blocked = !canAssignPermissions ? NO_PERMISSION_RIGHT_REASON : item.allowed ? null : (item.reason ?? 'Diese Aktion ist nicht erlaubt.');
     const hintId = `permission-hint-${item.permission}`;
     const verb = PERMISSION_VERBS[item.action];
@@ -190,45 +198,119 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
       <p>{back}</p>
       <h1>{access.account.email ?? access.account.login_name}</h1>
       <p>
-        Anmeldename {access.account.login_name} · {statusLabel(access.account.status)} · Erfordert MFA:{' '}
+        Anmeldename {access.account.login_name} · {statusLabel(access.account.status, access.account.inactive_since)}
+        {access.account.login_sync_pending ? ` (${SYNC_PENDING_LABEL})` : ''} · Erfordert MFA:{' '}
         {access.account.mfa_required ? 'Ja' : 'Nein'}
       </p>
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
       <Card>
-        <section aria-label="Rollen">
-          <h2>Rollen</h2>
-          {held.length === 0 ? <p>Dieses Konto hat keine Rolle.</p> : <ul>{held.map((role) => roleRow(role, 'Rolle entziehen'))}</ul>}
-          {available.length > 0 && (
+        <section aria-label="Konto">
+          <h2>Konto</h2>
+          <p>Eine Deaktivierung beendet laufende Sitzungen sofort, die Person kann sich nicht mehr anmelden. Rollen und Rechte bleiben erhalten.</p>
+          <Button
+            variant="secondary"
+            disabled={busy || deactivationBlocked !== null}
+            aria-describedby={deactivationBlocked ? 'deactivate-hint' : undefined}
+            onClick={() => setConfirmingDeactivation(true)}
+          >
+            Deaktivieren …
+          </Button>
+          {deactivationBlocked && (
+            <small id="deactivate-hint" style={{ display: 'block' }}>
+              {deactivationBlocked}
+            </small>
+          )}
+          {reactivation && (
             <>
-              <h3>Weitere Rollen</h3>
-              <ul>{available.map((role) => roleRow(role, 'Rolle hinzufügen'))}</ul>
+              <h3>Konto reaktivieren</h3>
+              <p>Die Person kann sich danach wieder anmelden. Frühere Sitzungen bleiben beendet: Die Person muss sich danach neu anmelden.</p>
+              <Button
+                variant="secondary"
+                disabled={busy || reactivationBlocked !== null}
+                aria-describedby={reactivationBlocked ? 'reactivate-hint' : undefined}
+                onClick={() => void reactivate()}
+              >
+                Reaktivieren
+              </Button>
+              {reactivationBlocked && (
+                <small id="reactivate-hint" style={{ display: 'block' }}>
+                  {reactivationBlocked}
+                </small>
+              )}
+            </>
+          )}
+          {resyncAction && (
+            <>
+              <h3>Abgleich mit dem Anmeldedienst offen</h3>
+              <p>
+                Das Konto ist hier deaktiviert und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet, bis der Abgleich gelingt.
+              </p>
+              {access.account.login_sync_error && <p>{syncRejectionText(access.account.login_sync_error)}</p>}
+              <Button
+                variant="secondary"
+                disabled={busy || resyncBlocked !== null}
+                aria-describedby={resyncBlocked ? 'resync-hint' : undefined}
+                onClick={() => void resync()}
+              >
+                Abgleich wiederholen
+              </Button>
+              {resyncBlocked && (
+                <small id="resync-hint" style={{ display: 'block' }}>
+                  {resyncBlocked}
+                </small>
+              )}
             </>
           )}
         </section>
       </Card>
-      <Card>
-        <section aria-label="Effektive Rechte">
-          <h2>Effektive Rechte</h2>
-          <EffectivePermissions permissions={access.permissions} />
-        </section>
-      </Card>
-      <Card>
-        <section aria-label="Einzelrechte">
-          <h2>Einzelrechte</h2>
-          <p>Einzelrechte gelten zusätzlich zu den Rollen oder entziehen ein Recht trotz Rolle. Konten mit der Rolle Schuladmin oder Schüler/in haben keine.</p>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Recht</th>
-                <th scope="col">Herkunft</th>
-                <th scope="col">Aktion</th>
-              </tr>
-            </thead>
-            <tbody>{access.permission_actions.map(permissionRow)}</tbody>
-          </table>
-        </section>
-      </Card>
+      <ConfirmDialog
+        open={confirmingDeactivation}
+        title={`Konto „${accountName}“ deaktivieren?`}
+        description="Die Person kann sich nicht mehr anmelden, laufende Sitzungen enden sofort. Konto, Rollen und Daten bleiben erhalten; die Verwaltung kann das Konto später reaktivieren."
+        confirmText="Deaktivieren"
+        variant="danger"
+        onConfirm={() => void deactivate()}
+        onCancel={() => setConfirmingDeactivation(false)}
+      />
+      {showsAccess && (
+        <>
+        <Card>
+          <section aria-label="Rollen">
+            <h2>Rollen</h2>
+            {held.length === 0 ? <p>Dieses Konto hat keine Rolle.</p> : <ul>{held.map((role) => roleRow(role, 'Rolle entziehen'))}</ul>}
+            {available.length > 0 && (
+              <>
+                <h3>Weitere Rollen</h3>
+                <ul>{available.map((role) => roleRow(role, 'Rolle hinzufügen'))}</ul>
+              </>
+            )}
+          </section>
+        </Card>
+        <Card>
+          <section aria-label="Effektive Rechte">
+            <h2>Effektive Rechte</h2>
+            <EffectivePermissions permissions={permissions ?? []} />
+          </section>
+        </Card>
+        <Card>
+          <section aria-label="Einzelrechte">
+            <h2>Einzelrechte</h2>
+            <p>Einzelrechte gelten zusätzlich zu den Rollen oder entziehen ein Recht trotz Rolle. Konten mit der Rolle Schuladmin oder Schüler/in haben keine.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Recht</th>
+                  <th scope="col">Herkunft</th>
+                  <th scope="col">Aktion</th>
+                </tr>
+              </thead>
+              <tbody>{(permissionActions ?? []).map(permissionRow)}</tbody>
+            </table>
+          </section>
+        </Card>
+        </>
+      )}
     </main>
   );
 }

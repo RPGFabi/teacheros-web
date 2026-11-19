@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import { useAuth } from '@hoelzle/react-auth';
+import { loginLockNotice } from './lockNotice';
 
 interface Challenge {
   token: string;
@@ -20,8 +21,8 @@ export default function LoginPage({ notice }: { notice?: string }) {
     setError(null);
     try {
       await action();
-    } catch {
-      setError(failure);
+    } catch (err) {
+      setError(loginLockNotice(err) ?? failure);
     } finally {
       setBusy(false);
     }

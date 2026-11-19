@@ -77,6 +77,36 @@ describe('Anmeldung und Mein Konto', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
   });
 
+  it('erklaert bei account_disabled mit reason admin_locked, dass die Verwaltung das Konto gesperrt hat', async () => {
+    setup({
+      'POST /login': {
+        status: 403,
+        data: { error: 'Dein Account ist noch nicht aktiv.', code: 'account_disabled', reason: 'admin_locked' }
+      }
+    });
+
+    await fillLogin();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ihr Konto wurde von der Verwaltung gesperrt. Bitte wenden Sie sich an Ihre Schule.');
+    expect(screen.getByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+  });
+
+  it.each([['security_lock'], [undefined]])('nennt bei account_disabled mit reason %s nur, dass das Konto gesperrt ist', async (reason) => {
+    setup({ 'POST /login': { status: 403, data: { error: 'Dein Account ist noch nicht aktiv.', code: 'account_disabled', reason } } });
+
+    await fillLogin();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Ihr Konto ist gesperrt\.$/);
+  });
+
+  it('zeigt bei einer Antwort ohne account_disabled weiter die allgemeine Anmeldemeldung', async () => {
+    setup({ 'POST /login': { status: 403, data: { error: 'Dein Account ist noch nicht aktiv.' } } });
+
+    await fillLogin();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Anmeldung fehlgeschlagen. Bitte E-Mail bzw. Anmeldename und Passwort prüfen.');
+  });
+
   it('meldet ueber Abmelden ab und zeigt wieder das Anmeldeformular', async () => {
     const { auth } = setup({
       'POST /login': { data: { token: 'jwt-1', email: 'lehrer@example.test' } },
@@ -89,21 +119,6 @@ describe('Anmeldung und Mein Konto', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
     expect(auth.calls.some((c) => c.method === 'POST' && c.url === '/logout')).toBe(true);
-  });
-
-  it('erklaert, wenn die API das Konto als nicht aktiv ablehnt', async () => {
-    // Auth-Dienst erneuert die Sitzung noch (Status dort nicht gespiegelt), die API lehnt trotzdem ab.
-    setup(
-      {
-        'POST /login': { data: { token: 'jwt-1', email: 'lehrer@example.test' } },
-        'POST /refresh': { data: { token: 'jwt-2', email: 'lehrer@example.test' } }
-      },
-      { 'GET /api/me': { status: 401, data: { code: 'account_inactive' } } }
-    );
-
-    await fillLogin();
-
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Ihr Konto ist nicht aktiv'));
   });
 
   it('zeigt nach der Anmeldung Konten, wenn /api/me das Recht accounts.view liefert', async () => {
@@ -125,6 +140,79 @@ describe('Anmeldung und Mein Konto', () => {
 
     await screen.findByRole('heading', { level: 1, name: 'Mein Konto' });
     expect(screen.queryByRole('link', { name: 'Konten' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Laufende Sitzung einer gesperrten Person', () => {
+  beforeEach(() => localStorage.clear());
+
+  const LOGIN = { 'POST /login': { data: { token: 'jwt-1', email: 'lehrer@example.test' } }, 'POST /logout': { data: {} } };
+
+  it('meldet bei 401 account_inactive ab und nennt bei admin_locked die Sperre durch die Verwaltung', async () => {
+    // Der Anmeldedienst widerruft beim Sperren die Refresh-Tokens: die Erneuerung scheitert (Standard-Route 401).
+    const { auth } = setup(LOGIN, { 'GET /api/me': { status: 401, data: { error: 'Account inactive', code: 'account_inactive', reason: 'admin_locked' } } });
+
+    await fillLogin();
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Ihr Konto wurde von der Verwaltung gesperrt. Bitte wenden Sie sich an Ihre Schule.');
+    expect(screen.queryByRole('navigation', { name: 'Hauptnavigation' })).not.toBeInTheDocument();
+    expect(auth.calls.some((c) => c.method === 'POST' && c.url === '/logout')).toBe(true);
+  });
+
+  it('nennt bei account_inactive ohne bekannten Grund nur, dass das Konto gesperrt ist, auch wenn die Erneuerung noch klappt', async () => {
+    setup(
+      { ...LOGIN, 'POST /refresh': { data: { token: 'jwt-2', email: 'lehrer@example.test' } } },
+      { 'GET /api/me': { status: 401, data: { error: 'Account inactive', code: 'account_inactive', reason: null } } }
+    );
+
+    await fillLogin();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^Ihr Konto ist gesperrt\.$/);
+    expect(screen.getByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+  });
+
+  it('meldet bei 401 session_revoked ohne Sperrhinweis ab, ohne die Sitzung noch zu erneuern', async () => {
+    const { auth } = setup({ ...LOGIN, 'POST /refresh': { data: { token: 'jwt-2', email: 'lehrer@example.test' } } }, { 'GET /api/me': { status: 401, data: { error: 'Session revoked', code: 'session_revoked' } } });
+
+    await fillLogin();
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(auth.calls.filter((c) => c.url === '/refresh')).toHaveLength(0);
+  });
+
+  it('erkennt die Sperre auch bei einem spaeteren API-Aufruf, nicht nur bei /api/me', async () => {
+    let locked = false;
+    const { api } = setup(LOGIN, {
+      'GET /api/me': () => (locked ? { status: 401, data: { code: 'account_inactive', reason: 'admin_locked' } } : { data: { ...ME, permissions: ['accounts.view', 'accounts.invite'] } }),
+      'GET /api/accounts': () => ({ status: 401, data: { code: 'account_inactive', reason: 'admin_locked' } })
+    });
+    await fillLogin();
+    const nav = await screen.findByRole('navigation', { name: 'Hauptnavigation' });
+    locked = true;
+
+    await userEvent.click(within(nav).getByRole('link', { name: 'Konten' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('von der Verwaltung gesperrt');
+    expect(api.calls.some((c) => c.url === '/api/accounts')).toBe(true);
+  });
+
+  it('zeigt den Sperrhinweis nach erneuter Anmeldung und spaeterem Abmelden nicht mehr', async () => {
+    let attempt = 0;
+    setup(LOGIN, {
+      'GET /api/me': () => (attempt++ === 0 ? { status: 401, data: { code: 'account_inactive', reason: 'admin_locked' } } : { data: ME })
+    });
+    await fillLogin();
+    await screen.findByRole('status');
+
+    await fillLogin();
+    await screen.findByRole('heading', { level: 1, name: 'Mein Konto' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Anmelden' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
 

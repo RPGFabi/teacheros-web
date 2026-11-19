@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { errorCode } from '../api/errors';
-import { statusLabel } from '../account/status';
+import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
+import { formatDate } from '../shared';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 import AccountDetail from './AccountDetail';
 
@@ -13,6 +14,10 @@ export interface AccountRow {
   status: 'invited' | 'active' | 'inactive' | string;
   /** ISO 8601 (UTC) oder null, wenn das Konto nie eingeladen wurde. */
   invited_at: string | null;
+  /** ISO 8601 (UTC): seit wann das Konto deaktiviert ist; sonst null (Ticket #41). */
+  inactive_since?: string | null;
+  /** „Abgleich offen“: die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet (Ticket #42). */
+  login_sync_pending?: boolean;
 }
 
 interface Props {
@@ -50,7 +55,7 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_email: 'Die E-Mail-Adresse ist ungültig.',
   invalid_username: 'Der Anmeldename ist ungültig. Erlaubt sind 3 bis 64 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.',
   username_login_disabled: 'Konten ohne E-Mail-Adresse sind an dieser Schulinstanz nicht eingerichtet. Bitte geben Sie eine E-Mail-Adresse an.',
-  account_disabled: 'Dieses Konto ist gesperrt und kann nicht eingeladen werden.',
+  account_disabled: 'Dieses Konto ist deaktiviert und kann nicht eingeladen werden.',
   invalid_request: 'Die Anfrage wurde abgelehnt. Bitte prüfen Sie Ihre Angaben.',
   forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.',
   auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Es wurde nichts angelegt; bitte versuchen Sie es gleich noch einmal.'
@@ -64,10 +69,6 @@ function describeFailure(err: unknown): string {
 /** Daten der Einladungskarte zu einem Einladungscode der Antwort. */
 function cardFor(data: InvitationResponse, code: string): InvitationCardData {
   return { loginName: data.account.login_name, code, validUntil: data.invite_expires_at };
-}
-
-function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('de-DE') : '–';
 }
 
 export default function AccountsPage({
@@ -212,7 +213,15 @@ export default function AccountsPage({
                 <tr key={account.id}>
                   <td>{account.email ?? '–'}</td>
                   <td>{account.login_name}</td>
-                  <td>{statusLabel(account.status)}</td>
+                  <td>
+                    {statusLabel(account.status, account.inactive_since)}
+                    {account.login_sync_pending && (
+                      <>
+                        {' '}
+                        <small title="Die Deaktivierung ist dem Anmeldedienst noch nicht gemeldet.">{SYNC_PENDING_LABEL}</small>
+                      </>
+                    )}
+                  </td>
                   <td>{formatDate(account.invited_at)}</td>
                   {(canInvite || canViewAccess) && (
                     <td>
