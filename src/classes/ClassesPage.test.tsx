@@ -8,7 +8,7 @@ const Y2526 = { id: 'sy-1', name: '2025/26', starts_on: '2025-09-01', ends_on: '
 const Y2627 = { id: 'sy-2', name: '2026/27', starts_on: '2026-09-14', ends_on: '2027-07-29', status: 'running' };
 const Y2728 = { id: 'sy-3', name: '2027/28', starts_on: '2027-09-13', ends_on: '2028-07-28', status: 'upcoming' };
 
-const klass = (id: string, grade_level: number, name: string, year = Y2627) => ({ id, grade_level, name, school_year: { id: year.id, name: year.name } });
+const klass = (id: string, grade_level: number, name: string, year = Y2627) => ({ id, grade_level, name, archived: false, school_year: { id: year.id, name: year.name } });
 
 const yearsRoute = (...years: unknown[]) => ({ 'GET /api/classes/school-years': { data: { school_years: years } } });
 const classesRoute = (byYear: Record<string, unknown[]>) => ({

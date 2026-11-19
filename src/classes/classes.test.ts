@@ -57,3 +57,24 @@ describe('Fehlertexte beim Anlegen', () => {
     expect(describeClassFailure(new Error('offline'))).toMatch(/Die Klasse konnte nicht angelegt werden/);
   });
 });
+
+describe('Fehlertexte der weiteren Aktionen (Ticket #57)', () => {
+  it.each([
+    ['class_not_found', /gibt es nicht mehr/],
+    ['class_archived', /archiviert.*wieder her/],
+    ['class_already_archived', /bereits archiviert/],
+    ['class_not_archived', /nicht archiviert/],
+    ['class_linked', /verknüpft.*Archivieren Sie/]
+  ])('uebersetzt %s', (code, text) => {
+    expect(describeClassFailure(failure(409, code), 'delete')).toMatch(text);
+  });
+
+  it.each([
+    ['update', /nicht gespeichert werden/],
+    ['archive', /nicht archiviert werden/],
+    ['restore', /nicht wiederhergestellt werden/],
+    ['delete', /nicht gelöscht werden/]
+  ] as const)('nennt bei unbekanntem Fehler je Aktion den passenden allgemeinen Text (%s)', (action, text) => {
+    expect(describeClassFailure(failure(500), action)).toMatch(text);
+  });
+});

@@ -162,7 +162,7 @@ describe('Schuljahre: Anlegen', () => {
 });
 
 describe('Schuljahre: Detailansicht mit Klassen (Ticket #55)', () => {
-  const klass = (id: string, grade_level: number, name: string) => ({ id, grade_level, name, school_year: { id: Y2627.id, name: Y2627.name } });
+  const klass = (id: string, grade_level: number, name: string) => ({ id, grade_level, name, archived: false, school_year: { id: Y2627.id, name: Y2627.name } });
   const setup = (props: { canViewClasses?: boolean; canManageClasses?: boolean } = {}) => {
     const { client, calls } = fakeClient({
       ...list(Y2526, Y2627),
