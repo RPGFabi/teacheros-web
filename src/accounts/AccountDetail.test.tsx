@@ -431,7 +431,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'user_not_found' } } } });
 
     const section = await screen.findByRole('region', { name: 'Konto' });
-    expect(within(section).getByText(/Der Anmeldedienst kennt das Konto nicht/)).toBeInTheDocument();
+    expect(within(section).getByText(/Der Anmeldedienst kennt dieses Konto nicht/)).toBeInTheDocument();
     expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
   });
 
@@ -445,7 +445,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     mount({ [path]: { data: PENDING } });
 
     await screen.findByRole('region', { name: 'Konto' });
-    expect(screen.queryByText(/abgelehnt|kennt das Konto nicht/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/abgelehnt|kennt dieses Konto nicht/)).not.toBeInTheDocument();
   });
 
   it('zeigt weder Hinweis noch Knopf, wenn kein Abgleich offen ist', async () => {

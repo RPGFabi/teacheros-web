@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, ConfirmDialog } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { errorCode } from '../api/errors';
 import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
 import type { AccountAccess, PermissionAction, RoleAction } from './access';
 import EffectivePermissions, { PermissionSources } from './EffectivePermissions';
+import { describeFailure, loadFailureText, syncRejectionText, type Flow } from './errorText';
 
 interface Props {
   apiClient: AxiosInstance;
@@ -16,71 +16,15 @@ interface Props {
   onBack: () => void;
 }
 
-/** Verstaendliche Texte fuer die Fehlercodes der API beim Vergeben, Entziehen, Gewaehren und Zuruecksetzen (Rollen wie Einzelrechte). */
-const ERROR_TEXT: Record<string, string> = {
-  self_escalation: 'Sie können sich selbst keine Rollen oder Einzelrechte geben, entziehen oder zurücksetzen.',
-  permission_not_held: 'Sie besitzen nicht alle dafür nötigen Rechte und dürfen deshalb nichts vergeben, entziehen oder zurücksetzen.',
-  student_role_exclusive: 'Ein Konto mit der Rolle Schüler/in hat keine weitere Rolle und keine Einzelrechte.',
-  admin_overrides_forbidden: 'Konten mit der Rolle Schuladmin haben keine Einzelrechte; Konten mit Einzelrechten können nicht Schuladmin werden. Setzen Sie die Einzelrechte zuerst zurück.',
-  last_admin: 'Das ist der letzte aktive Schuladmin. Ernennen Sie zuerst einen weiteren Schuladmin, der sich schon angemeldet hat.',
-  unknown_permission: 'Dieses Recht gibt es nicht.',
-  role_not_found: 'Diese Rolle gibt es nicht mehr.',
-  account_not_found: 'Dieses Konto gibt es nicht mehr.',
-  forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.'
-};
-
-/** Fehlertexte der Deaktivierung; ersetzen bei gleichem Code die allgemeinen Texte. */
-const DEACTIVATE_ERROR_TEXT: Record<string, string> = {
-  self_deactivation: 'Sie können sich nicht selbst deaktivieren.',
-  account_not_active: 'Nur aktive Konten lassen sich deaktivieren.',
-  permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.'
-};
-
-/** Fehlertexte beim Wiederholen des Abgleichs (Ticket #42). */
-const RESYNC_ERROR_TEXT: Record<string, string> = {
-  auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Der Abgleich bleibt offen; bitte versuchen Sie es später noch einmal.',
-  sync_not_pending: 'Es ist kein Abgleich mehr offen.',
-  user_not_found: 'Der Anmeldedienst kennt dieses Konto nicht. Der Abgleich bleibt offen.'
-};
-
-/** Fehlertexte der Reaktivierung (Ticket #43); ersetzen bei gleichem Code die allgemeinen Texte. */
-const REACTIVATE_ERROR_TEXT: Record<string, string> = {
-  self_deleted: 'Die Person hat ihr Konto selbst gelöscht. Das lässt sich nicht rückgängig machen; das Konto bleibt deaktiviert.',
-  email_unconfirmed: 'Die E-Mail-Adresse der Person ist noch nicht bestätigt. Das Konto bleibt deaktiviert.',
-  auth_unavailable: 'Der Anmeldedienst ist gerade nicht erreichbar. Das Konto bleibt deaktiviert; bitte versuchen Sie es später noch einmal.',
-  user_not_found: 'Der Anmeldedienst kennt dieses Konto nicht. Das Konto bleibt deaktiviert.',
-  account_not_inactive: 'Nur deaktivierte Konten lassen sich reaktivieren.',
-  self_reactivation: 'Sie können sich nicht selbst reaktivieren.',
-  permission_not_held: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht reaktivieren.'
-};
-
-/** Was die fachliche Ablehnung des Anmeldedienstes beim Abgleich bedeutet (`account.login_sync_error`); andere Codes erscheinen allgemein. */
-const SYNC_REJECTION_TEXT: Record<string, string> = {
-  user_not_found: 'Der Anmeldedienst kennt das Konto nicht.'
-};
-
-function syncRejectionText(code: string): string {
-  return SYNC_REJECTION_TEXT[code] ?? `Der Anmeldedienst hat den Abgleich abgelehnt (${code}).`;
-}
-
 const SYNC_PENDING_NOTICE = 'Der Abgleich mit dem Anmeldedienst ist noch offen; wiederholen Sie ihn im Abschnitt „Konto“.';
 const NO_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Rollen vergeben und entziehen“.';
 const NO_PERMISSION_RIGHT_REASON = 'Dafür fehlt Ihnen das Recht „Einzelrechte vergeben und entziehen“.';
-const SAVE_FAILED = 'Die Änderung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.';
-const RESYNC_FAILED = 'Der Abgleich konnte nicht wiederholt werden. Bitte versuchen Sie es erneut.';
-const REACTIVATE_FAILED = 'Das Konto konnte nicht reaktiviert werden. Bitte versuchen Sie es erneut.';
-const DEACTIVATE_FAILED = 'Das Konto konnte nicht deaktiviert werden. Bitte versuchen Sie es erneut.';
 
 const PERMISSION_VERBS = {
   grant: { button: 'Gewähren', label: 'Einzelrecht gewähren', done: 'gewährt' },
   withdraw: { button: 'Entziehen', label: 'Einzelrecht entziehen', done: 'entzogen' },
   clear: { button: 'Zurücksetzen', label: 'Einzelrecht zurücksetzen', done: 'zurückgesetzt' }
 } as const;
-
-function describeFailure(err: unknown, overrides: Record<string, string> = {}, fallback = SAVE_FAILED): string {
-  const code = errorCode(err);
-  return (code !== undefined && (overrides[code] ?? ERROR_TEXT[code])) || fallback;
-}
 
 /**
  * Detailansicht eines Kontos (Ticket #34): Rollen einzeln hinzufuegen und entziehen, effektive Rechte mit Herkunft.
@@ -109,7 +53,7 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     try {
       setAccess((await apiClient.get<AccountAccess>(`/api/accounts/${accountId}/access`)).data);
     } catch (err) {
-      setLoadError(errorCode(err) === 'account_not_found' ? ERROR_TEXT.account_not_found : 'Das Konto konnte nicht geladen werden.');
+      setLoadError(loadFailureText(err));
     }
   }, [apiClient, accountId]);
 
@@ -117,87 +61,48 @@ export default function AccountDetail({ apiClient, accountId, canAssign, canAssi
     void load();
   }, [load]);
 
-  async function change(role: RoleAction) {
+  /**
+   * Der gemeinsame Ablauf jeder Aenderung: die Antwort der API ist die neue Sicht; bei einem Fehler erscheint der Text zur
+   * Aktion und die Sicht wird neu geladen.
+   */
+  async function perform(flow: Flow, request: () => Promise<AccountAccess>, done: (data: AccountAccess) => string) {
     setBusy(true);
     setNotice(null);
     setError(null);
     try {
-      const assigning = role.action === 'assign';
-      const { data } = assigning
-        ? await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/roles`, { role_id: role.role_id })
-        : await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/roles/${role.role_id}/revoke`);
+      const data = await request();
       setAccess(data);
-      setNotice(assigning ? `Rolle ${role.role_name} vergeben.` : `Rolle ${role.role_name} entzogen.`);
+      setNotice(done(data));
     } catch (err) {
-      setError(describeFailure(err));
+      setError(describeFailure(err, flow));
       await load();
     } finally {
       setBusy(false);
     }
   }
 
-  async function changePermission(item: PermissionAction) {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const { data } = await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/permissions/${item.action}`, { permission: item.permission });
-      setAccess(data);
-      setNotice(`Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
-    } catch (err) {
-      setError(describeFailure(err));
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
+  const post = async (suffix: string, body?: unknown) => (await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/${suffix}`, body)).data;
 
-  async function deactivate() {
+  const change = (role: RoleAction) => {
+    const assigning = role.action === 'assign';
+    return perform(
+      'assign',
+      () => (assigning ? post('roles', { role_id: role.role_id }) : post(`roles/${role.role_id}/revoke`)),
+      () => (assigning ? `Rolle ${role.role_name} vergeben.` : `Rolle ${role.role_name} entzogen.`)
+    );
+  };
+
+  const changePermission = (item: PermissionAction) =>
+    perform('assign', () => post(`permissions/${item.action}`, { permission: item.permission }), () => `Einzelrecht „${item.name}“ ${PERMISSION_VERBS[item.action].done}.`);
+
+  function deactivate() {
     setConfirmingDeactivation(false);
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const { data } = await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/deactivate`);
-      setAccess(data);
-      setNotice(data.account.login_sync_pending ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.');
-    } catch (err) {
-      setError(describeFailure(err, DEACTIVATE_ERROR_TEXT, DEACTIVATE_FAILED));
-      await load();
-    } finally {
-      setBusy(false);
-    }
+    return perform('deactivate', () => post('deactivate'), (data) => (data.account.login_sync_pending ? `Konto deaktiviert. ${SYNC_PENDING_NOTICE}` : 'Konto deaktiviert.'));
   }
 
-  async function reactivate() {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
-      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/reactivate`)).data);
-      setNotice('Konto reaktiviert.');
-    } catch (err) {
-      setError(describeFailure(err, REACTIVATE_ERROR_TEXT, REACTIVATE_FAILED));
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
+  const reactivate = () => perform('reactivate', () => post('reactivate'), () => 'Konto reaktiviert.');
 
-  async function resync() {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
-      setAccess((await apiClient.post<AccountAccess>(`/api/accounts/${accountId}/resync-login`)).data);
-      setNotice('Abgleich mit dem Anmeldedienst nachgeholt.');
-    } catch (err) {
-      setError(describeFailure(err, RESYNC_ERROR_TEXT, RESYNC_FAILED));
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
+  const resync = () => perform('resync', () => post('resync-login'), () => 'Abgleich mit dem Anmeldedienst nachgeholt.');
 
   const back = <Button variant="secondary" onClick={onBack}>Zurück zur Kontenliste</Button>;
 

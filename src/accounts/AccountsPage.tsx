@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { errorCode } from '../api/errors';
-import { SYNC_PENDING_LABEL, formatDate, statusLabel } from '../account/status';
+import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
+import { formatDate } from '../shared';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 import AccountDetail from './AccountDetail';
 
