@@ -26,7 +26,12 @@ jobs:
             echo "API $r: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/repos/RPGFabi/$r)"
           done
           echo "Token-Typ: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/user)"
-          git ls-remote "https://x-access-token:$T@github.com/RPGFabi/React-UI.git" > /dev/null && echo "ls-remote React-UI ok" || echo "ls-remote React-UI FEHLER"
+          echo "API Contents React-UI: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/repos/RPGFabi/React-UI/contents/package.json)"
+          for u in x-access-token RPGFabi oauth2; do
+            GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "https://$u:$T@github.com/RPGFabi/React-UI.git" > /dev/null 2>&1 && echo "ls-remote als $u ok" || echo "ls-remote als $u FEHLER"
+          done
+          GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "https://$T@github.com/RPGFabi/React-UI.git" > /dev/null 2>&1 && echo "ls-remote ohne Name ok" || echo "ls-remote ohne Name FEHLER"
+          echo "insteadOf vorher gesetzt: $(git config --global --get-all url.https://x-access-token:$T@github.com/.insteadof | wc -l)"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
