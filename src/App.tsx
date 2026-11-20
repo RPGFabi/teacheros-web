@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { portals, type PortalId } from './app/routes';
+import { visiblePortals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
 import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
@@ -26,11 +26,9 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
     };
   }, [apiClient]);
 
-  // Die API liefert die fertige Rechte-Liste; hier wird nur nachgeschlagen, nichts ausgewertet.
-  const visiblePortals = portals.filter(
-    (p) => (!p.requires || hasPermission(me, p.requires)) && (!p.requiresAny || p.requiresAny.some((permission) => hasPermission(me, permission)))
-  );
-  const portal = visiblePortals.find((p) => p.id === active) ?? visiblePortals[0];
+  // Die API liefert Module und Rechte fertig; hier wird nur nachgeschlagen, nichts ausgewertet.
+  const shownPortals = visiblePortals(me);
+  const portal = shownPortals.find((p) => p.id === active) ?? shownPortals[0];
 
   return (
     <div className="app-shell">
@@ -47,7 +45,7 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
         </Button>
       </header>
       <nav id="main-nav" aria-label="Hauptnavigation" className={menuOpen ? 'nav nav-open' : 'nav'}>
-        {visiblePortals.map((p) => (
+        {shownPortals.map((p) => (
           <a
             key={p.id}
             href={p.path}
