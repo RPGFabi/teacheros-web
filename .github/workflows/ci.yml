@@ -17,6 +17,16 @@ jobs:
           git config --global url."$base".insteadOf "https://github.com/"
           git config --global --add url."$base".insteadOf "ssh://git@github.com/"
           git config --global --add url."$base".insteadOf "git@github.com:"
+      - name: Token-Diagnose (nur Status, kein Token)
+        env:
+          T: ${{ secrets.PACKAGES_TOKEN }}
+        run: |
+          echo "Token-Laenge: ${#T}"
+          for r in React-UI React-Auth; do
+            echo "API $r: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/repos/RPGFabi/$r)"
+          done
+          echo "Token-Typ: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/user)"
+          git ls-remote "https://x-access-token:$T@github.com/RPGFabi/React-UI.git" > /dev/null && echo "ls-remote React-UI ok" || echo "ls-remote React-UI FEHLER"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
