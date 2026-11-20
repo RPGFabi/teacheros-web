@@ -118,3 +118,18 @@ h1 {
   /* Die gemeinsamen Raender der Karten sind die Schnittlinien. */
   .invitation-card { border: 0.1mm solid #000; }
 }
+
+/* Tabelle mit data-label je Zelle: auf dem Smartphone eine Karte je Zeile (Ticket #54), ab 768px eine Tabelle */
+.responsive-table { width: 100%; border-collapse: collapse; }
+.responsive-table th, .responsive-table td { text-align: left; padding: 8px 12px; }
+@media (max-width: 767px) {
+  .responsive-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .responsive-table, .responsive-table tbody, .responsive-table tr, .responsive-table th, .responsive-table td { display: block; }
+  .responsive-table tr { margin-bottom: 12px; padding: 8px 4px; border: 1px solid rgba(138, 180, 255, 0.2); border-radius: 12px; }
+  .responsive-table tbody th { font-size: 1.1rem; }
+  .responsive-table td[data-label] { display: flex; justify-content: space-between; gap: 12px; }
+  .responsive-table td[data-label]::before { content: attr(data-label); color: #8ab4ff; }
+}
+
+/* Bezeichnung in der Schuljahr-Liste, die die Detailansicht oeffnet (Ticket #55): sieht aus wie Text mit Link-Farbe */
+.link-button { background: none; border: 0; padding: 0; font: inherit; color: #8ab4ff; text-decoration: underline; cursor: pointer; }

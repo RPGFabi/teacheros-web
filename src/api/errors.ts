@@ -9,3 +9,32 @@ export function errorReason(err: unknown): string | undefined {
   const reason = (err as { response?: { data?: { reason?: unknown } } } | null | undefined)?.response?.data?.reason;
   return typeof reason === 'string' ? reason : undefined;
 }
+
+/** Texte einer Fehlerbehandlung: je Fehlercode der API und, wenn kein Code passt, je Aktion ein allgemeiner Text. */
+export interface FailureTexts<A extends string> {
+  codes: Record<string, string>;
+  fallback: Record<A, string>;
+  /**
+   * Bei einem unbekannten Code mit diesem HTTP-Status zeigt die Seite die Meldung der API selbst (der Einwand eines
+   * anderen Moduls kommt mit eigenem Code und deutscher Meldung).
+   */
+  showApiMessageOnStatus?: number;
+}
+
+/**
+ * Verstaendlicher Text zu einer abgelehnten Anfrage: der Text zum Fehlercode, sonst auf Wunsch die Meldung der API, sonst der
+ * allgemeine Text der Aktion. Das eine Muster hinter den `describe…Failure` der Seiten.
+ */
+export function describeFailure<A extends string>(err: unknown, action: A, texts: FailureTexts<A>): string {
+  const code = errorCode(err);
+  if (code !== undefined && Object.prototype.hasOwnProperty.call(texts.codes, code)) {
+    return texts.codes[code];
+  }
+  if (texts.showApiMessageOnStatus !== undefined) {
+    const response = (err as { response?: { status?: unknown; data?: { error?: unknown } } } | null | undefined)?.response;
+    if (response?.status === texts.showApiMessageOnStatus && typeof response.data?.error === 'string' && response.data.error !== '') {
+      return response.data.error;
+    }
+  }
+  return texts.fallback[action];
+}
