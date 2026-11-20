@@ -1,25 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSchoolYear, describeSchoolYearFailure, formatDay, previewName, statusLabel } from './schoolYears';
-
-const year = (id: string, status: string) => ({ id, name: id, starts_on: '2000-09-01', ends_on: '2001-07-31', status });
-
-describe('Vorauswahl des Schuljahres', () => {
-  it('waehlt das laufende Schuljahr', () => {
-    expect(defaultSchoolYear([year('a', 'past'), year('b', 'running'), year('c', 'upcoming')])?.id).toBe('b');
-  });
-
-  it('waehlt ohne laufendes das zuletzt vergangene (die API liefert nach Beginn aufsteigend)', () => {
-    expect(defaultSchoolYear([year('a', 'past'), year('b', 'past'), year('c', 'upcoming')])?.id).toBe('b');
-  });
-
-  it('waehlt ohne laufendes und ohne vergangenes das naechste kommende, also das erste', () => {
-    expect(defaultSchoolYear([year('a', 'upcoming'), year('b', 'upcoming')])?.id).toBe('a');
-  });
-
-  it('waehlt nichts, wenn es kein Schuljahr gibt', () => {
-    expect(defaultSchoolYear([])).toBeUndefined();
-  });
-});
+import { describeSchoolYearFailure, previewName } from './schoolYears';
 
 describe('Vorschau der Bezeichnung (wie die API: Jahr des Beginns / letzte zwei Ziffern des Endjahres)', () => {
   it('erzeugt 2026/27 aus 14.09.2026 bis 29.07.2027', () => {
@@ -47,20 +27,6 @@ describe('Vorschau der Bezeichnung (wie die API: Jahr des Beginns / letzte zwei 
 
   it('ignoriert kein gueltiges Datum', () => {
     expect(previewName('2026-02-30', '2027-07-29')).toEqual({});
-  });
-});
-
-describe('Status und Anzeige', () => {
-  it('uebersetzt den Status der API in deutsche Begriffe des Glossars', () => {
-    expect(statusLabel('running')).toBe('laufend');
-    expect(statusLabel('upcoming')).toBe('kommend');
-    expect(statusLabel('past')).toBe('vergangen');
-    expect(statusLabel('irgendwas')).toBe('irgendwas');
-  });
-
-  it('formatiert einen Kalendertag ohne Zeitzonenverschiebung', () => {
-    expect(formatDay('2026-09-14')).toBe('14.09.2026');
-    expect(formatDay('2027-01-01')).toBe('01.01.2027');
   });
 });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, FormField, Select } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { defaultSchoolYear, statusLabel, type SchoolYear } from '../school-years/schoolYears';
+import { defaultSchoolYear, statusLabel, type SchoolYear } from '../shared/schoolYear';
 import ClassesPanel from './ClassesPanel';
 
 interface Props {

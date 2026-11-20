@@ -1,54 +1,5 @@
 import { errorCode } from '../api/errors';
 
-/** Status eines Schuljahres laut API: aus dem Datum abgeleitet, nie gespeichert (Glossar: Schuljahr). */
-export type SchoolYearStatus = 'running' | 'upcoming' | 'past';
-
-/** Schuljahr laut `GET /api/school-years` (Ticket #54); Beginn und Ende als Kalendertag `JJJJ-MM-TT`, beide inklusive. */
-export interface SchoolYear {
-  id: string;
-  /** Bezeichnung, von der API aus dem Zeitraum erzeugt ("2026/27"); nicht eingebbar. */
-  name: string;
-  starts_on: string;
-  ends_on: string;
-  status: SchoolYearStatus | string;
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  running: 'laufend',
-  upcoming: 'kommend',
-  past: 'vergangen'
-};
-
-/** Anzeigename des Status (Begriffe des Glossars); unbekannte Werte erscheinen unveraendert. */
-export function statusLabel(status: string): string {
-  return STATUS_LABEL[status] ?? status;
-}
-
-/** Farbe des Status-Badges. */
-export function statusVariant(status: string): 'success' | 'primary' | 'neutral' {
-  return status === 'running' ? 'success' : status === 'upcoming' ? 'primary' : 'neutral';
-}
-
-/**
- * Vorausgewaehltes Schuljahr einer Auswahl (Seite „Klassen“): das laufende, sonst das zuletzt vergangene, sonst das naechste
- * kommende. Das ist dieselbe Regel wie der Status der API (laufend ist auch das naechste kommende, wenn heute in einer
- * Luecke zwischen zwei Schuljahren liegt; vor dem ersten Schuljahr laeuft keines); hier wird nur der fertige Status
- * gelesen, nichts aus Daten berechnet. `years` kommt nach Beginn aufsteigend. Ohne Schuljahr gibt es keine Vorauswahl.
- */
-export function defaultSchoolYear<T extends Pick<SchoolYear, 'status'>>(years: T[]): T | undefined {
-  return (
-    years.find((y) => y.status === 'running') ??
-    [...years].reverse().find((y) => y.status === 'past') ??
-    years.find((y) => y.status === 'upcoming')
-  );
-}
-
-/** Kalendertag `JJJJ-MM-TT` als `TT.MM.JJJJ`, ohne Zeitzone (anders als `formatDate`, das eine Zeit erwartet). */
-export function formatDay(day: string): string {
-  const [year, month, date] = day.split('-');
-  return `${date}.${month}.${year}`;
-}
-
 const REAL_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function yearOfRealDay(value: string): number | null {

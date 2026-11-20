@@ -2,7 +2,9 @@ import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Button, Card, Chip, ConfirmDialog, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import ClassesPanel from '../classes/ClassesPanel';
-import { describeSchoolYearFailure, formatDay, previewName, statusLabel, statusVariant, type SchoolYear, type SchoolYearAction } from './schoolYears';
+import { formatDay } from '../shared/format';
+import { statusLabel, statusVariant, type SchoolYear } from '../shared/schoolYear';
+import { describeSchoolYearFailure, previewName, type SchoolYearAction } from './schoolYears';
 
 interface Props {
   apiClient: AxiosInstance;
