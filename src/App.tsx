@@ -8,7 +8,7 @@ import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import ClassesPage from './classes/ClassesPage';
 import SchoolYearsPage from './school-years/SchoolYearsPage';
-import { apiClient as defaultApiClient } from './api/client';
+import { apiClient as defaultApiClient } from './api/clients';
 
 export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
   const [active, setActive] = useState<PortalId>(initialPortal);
