@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Button, Card, FormField, Select } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { defaultSchoolYear, statusLabel, type SchoolYear } from '../shared/schoolYear';
+import { useResource } from '../shared/useResource';
 import ClassesPanel from './ClassesPanel';
 
 interface Props {
@@ -16,24 +17,14 @@ interface Props {
  * `GET /api/classes/school-years`, nicht von der Schuljahr-Liste, die `school_years.view` braucht.
  */
 export default function ClassesPage({ apiClient, canManage }: Props) {
-  const [years, setYears] = useState<SchoolYear[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoadError(false);
-    try {
-      const response = await apiClient.get<{ school_years: SchoolYear[] }>('/api/classes/school-years');
-      setYears(response.data.school_years);
-      setSelectedId((current) => current ?? defaultSchoolYear(response.data.school_years)?.id ?? null);
-    } catch {
-      setLoadError(true);
-    }
+  const fetchYears = useCallback(async () => {
+    const { data } = await apiClient.get<{ school_years: SchoolYear[] }>('/api/classes/school-years');
+    setSelectedId((current) => current ?? defaultSchoolYear(data.school_years)?.id ?? null);
+    return data.school_years;
   }, [apiClient]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: years, loadError, reload: load } = useResource(fetchYears);
 
   const selected = years?.find((y) => y.id === selectedId);
 

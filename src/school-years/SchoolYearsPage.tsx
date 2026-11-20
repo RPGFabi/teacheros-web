@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
+import { useCallback, useId, useState, type FormEvent } from 'react';
 import { Button, Card, Chip, ConfirmDialog, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import ClassesPanel from '../classes/ClassesPanel';
 import { formatDay } from '../shared/format';
 import { statusLabel, statusVariant, type SchoolYear } from '../shared/schoolYear';
+import { useResource } from '../shared/useResource';
 import { describeSchoolYearFailure, previewName, type SchoolYearAction } from './schoolYears';
 
 interface Props {
@@ -25,48 +26,15 @@ interface Props {
  * Detailansicht (Ticket #55): Zeitraum, Status und die Klassen des Schuljahres.
  */
 export default function SchoolYearsPage({ apiClient, canManage, canViewClasses = false, canManageClasses = false }: Props) {
-  const [years, setYears] = useState<SchoolYear[] | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<SchoolYear | null>(null);
   const [deleting, setDeleting] = useState<SchoolYear | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoadError(false);
-    try {
-      const response = await apiClient.get<{ school_years: SchoolYear[] }>('/api/school-years');
-      setYears(response.data.school_years);
-    } catch {
-      setLoadError(true);
-    }
-  }, [apiClient]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const fetchYears = useCallback(async () => (await apiClient.get<{ school_years: SchoolYear[] }>('/api/school-years')).data.school_years, [apiClient]);
+  // Schreibzugriffe laden danach immer neu, auch nach einem Fehler: die Liste kann sich inzwischen geaendert haben.
+  const { data: years, loadError, reload: load, busy, notice, error, run, clearMessages } = useResource<SchoolYear[], SchoolYearAction>(fetchYears, describeSchoolYearFailure);
 
   const detail = years?.find((year) => year.id === detailId);
-
-  /** Schreibzugriff mit Meldung; true = gelungen. Auch nach einem Fehler neu laden: die Liste kann sich inzwischen geaendert haben. */
-  const run = async (action: SchoolYearAction, write: () => Promise<string>): Promise<boolean> => {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    let ok = false;
-    try {
-      setNotice(await write());
-      ok = true;
-    } catch (err) {
-      setError(describeSchoolYearFailure(err, action));
-    } finally {
-      setBusy(false);
-    }
-    await load();
-    return ok;
-  };
 
   const create = (startsOn: string, endsOn: string) =>
     run('create', async () => {
@@ -94,8 +62,7 @@ export default function SchoolYearsPage({ apiClient, canManage, canViewClasses =
   };
 
   const startEditing = (year: SchoolYear) => {
-    setNotice(null);
-    setError(null);
+    clearMessages();
     setEditing(year);
   };
 

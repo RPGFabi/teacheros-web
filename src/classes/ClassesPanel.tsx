@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { Button, Card, Checkbox, Chip, ConfirmDialog, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
+import { useResource } from '../shared/useResource';
 import ClassEditForm from './ClassEditForm';
 import { classFormProblem, describeClassFailure, MAX_GRADE_LEVEL, MIN_GRADE_LEVEL, type ClassAction, type SchoolClass } from './classes';
 
@@ -21,31 +22,18 @@ interface Props {
  * (`key`), dann beginnen Eingaben und Meldungen frisch.
  */
 export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props) {
-  const [classes, setClasses] = useState<SchoolClass[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
   const [gradeLevel, setGradeLevel] = useState('');
   const [name, setName] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<SchoolClass | null>(null);
   const [deleting, setDeleting] = useState<SchoolClass | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoadError(false);
-    try {
-      const params = showArchived ? { school_year_id: schoolYear.id, include_archived: 1 } : { school_year_id: schoolYear.id };
-      const response = await apiClient.get<{ classes: SchoolClass[] }>('/api/classes', { params });
-      setClasses(response.data.classes);
-    } catch {
-      setLoadError(true);
-    }
+  const fetchClasses = useCallback(async () => {
+    const params = showArchived ? { school_year_id: schoolYear.id, include_archived: 1 } : { school_year_id: schoolYear.id };
+    return (await apiClient.get<{ classes: SchoolClass[] }>('/api/classes', { params })).data.classes;
   }, [apiClient, schoolYear.id, showArchived]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Schreibzugriffe laden danach immer neu, auch nach einem Fehler: die Liste kann sich inzwischen geaendert haben.
+  const { data: classes, loadError, reload: load, busy, notice, error, run } = useResource<SchoolClass[], ClassAction>(fetchClasses, describeClassFailure);
 
   const problem = classFormProblem(gradeLevel, name);
   // Ein Hinweis erscheint erst, wenn schon etwas eingegeben ist; ein leeres Formular ist nur gesperrt.
@@ -56,58 +44,36 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
     if (problem !== undefined) {
       return;
     }
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    try {
+    const ok = await run('create', async () => {
       const { data } = await apiClient.post<{ class: SchoolClass }>('/api/classes', {
         school_year_id: schoolYear.id,
         grade_level: Number(gradeLevel),
         name: name.trim()
       });
-      setNotice(`Klasse ${data.class.name} angelegt.`);
+      return `Klasse ${data.class.name} angelegt.`;
+    });
+    if (ok) {
       // Die Klassenstufe bleibt stehen: meist folgen weitere Klassen derselben Stufe (7a, 7b, ...).
       setName('');
-    } catch (err) {
-      setError(describeClassFailure(err));
-    } finally {
-      setBusy(false);
     }
-    // Auch nach einem Fehler neu laden: die Liste kann sich inzwischen geaendert haben.
-    await load();
   };
 
-  /**
-   * Fuehrt eine Aktion auf einer Klasse aus: Meldung bei Erfolg oder Fehler, danach immer neu laden (die Liste kann sich
-   * inzwischen geaendert haben). Liefert, ob die Aktion gelang.
-   */
-  const run = async (action: ClassAction, request: () => Promise<unknown>, success: string): Promise<boolean> => {
-    setBusy(true);
-    setNotice(null);
-    setError(null);
-    let ok = false;
-    try {
-      await request();
-      setNotice(success);
-      ok = true;
-    } catch (err) {
-      setError(describeClassFailure(err, action));
-    } finally {
-      setBusy(false);
-    }
-    await load();
-    return ok;
-  };
+  /** Eine Aktion auf einer Klasse (`POST /api/classes/:id/<pfad>`); `success` ist die Erfolgsmeldung. */
+  const act = (action: ClassAction, target: SchoolClass, path: string, success: string, body?: object) =>
+    run(action, async () => {
+      await apiClient.post(`/api/classes/${target.id}/${path}`, body);
+      return success;
+    });
 
   const save = async (target: SchoolClass, grade: number, newName: string) => {
-    if (await run('update', () => apiClient.post(`/api/classes/${target.id}/update`, { grade_level: grade, name: newName }), `Klasse ${newName} gespeichert.`)) {
+    if (await act('update', target, 'update', `Klasse ${newName} gespeichert.`, { grade_level: grade, name: newName })) {
       setEditing(null);
     }
   };
 
   const remove = async (target: SchoolClass) => {
     setDeleting(null);
-    if (await run('delete', () => apiClient.post(`/api/classes/${target.id}/delete`), `Klasse ${target.name} gelöscht.`) && editing?.id === target.id) {
+    if ((await act('delete', target, 'delete', `Klasse ${target.name} gelöscht.`)) && editing?.id === target.id) {
       setEditing(null);
     }
   };
@@ -203,7 +169,7 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
                             variant="secondary"
                             disabled={busy}
                             aria-label={`Archivieren: ${c.name}`}
-                            onClick={() => void run('archive', () => apiClient.post(`/api/classes/${c.id}/archive`), `Klasse ${c.name} archiviert.`)}
+                            onClick={() => void act('archive', c, 'archive', `Klasse ${c.name} archiviert.`)}
                           >
                             Archivieren
                           </Button>{' '}
@@ -215,7 +181,7 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
                             variant="secondary"
                             disabled={busy}
                             aria-label={`Wiederherstellen: ${c.name}`}
-                            onClick={() => void run('restore', () => apiClient.post(`/api/classes/${c.id}/restore`), `Klasse ${c.name} wiederhergestellt.`)}
+                            onClick={() => void act('restore', c, 'restore', `Klasse ${c.name} wiederhergestellt.`)}
                           >
                             Wiederherstellen
                           </Button>{' '}
