@@ -27,11 +27,13 @@ jobs:
           done
           echo "Token-Typ: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/user)"
           echo "API Contents React-UI: $(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $T" https://api.github.com/repos/RPGFabi/React-UI/contents/package.json)"
-          for u in x-access-token RPGFabi oauth2; do
-            GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "https://$u:$T@github.com/RPGFabi/React-UI.git" > /dev/null 2>&1 && echo "ls-remote als $u ok" || echo "ls-remote als $u FEHLER"
-          done
-          GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "https://$T@github.com/RPGFabi/React-UI.git" > /dev/null 2>&1 && echo "ls-remote ohne Name ok" || echo "ls-remote ohne Name FEHLER"
-          echo "insteadOf vorher gesetzt: $(git config --global --get-all url.https://x-access-token:$T@github.com/.insteadof | wc -l)"
+          echo "--- git ls-remote (stderr):"
+          GIT_TERMINAL_PROMPT=0 GIT_TRACE_CURL_NO_DATA=1 git -c credential.helper= ls-remote "https://x-access-token:$T@github.com/RPGFabi/React-UI.git" 2>&1 | head -5 || true
+          echo "--- git config global:"
+          git config --global --list | sed "s/:[^@]*@/:<token>@/" || true
+          echo "--- HTTP info/refs:"
+          curl -s -o /dev/null -w "%{http_code}
+" -u "x-access-token:$T" "https://github.com/RPGFabi/React-UI.git/info/refs?service=git-upload-pack"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
