@@ -2,7 +2,7 @@ import type { Me } from '../account/AccountPage';
 import { ADMINISTRATION_PERMISSIONS, hasPermission } from '../account/permissions';
 import { isModuleActive, type ModuleId } from './modules';
 
-export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'school-years' | 'classes' | 'subjects' | 'account';
+export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'school-years' | 'classes' | 'subjects' | 'teaching-groups' | 'account';
 
 export interface Portal {
   id: PortalId;
@@ -78,6 +78,13 @@ export const portals: Portal[] = [
     path: '#/faecher',
     description: 'Fächer der Schulinstanz.',
     requires: 'subjects.view'
+  },
+  {
+    id: 'teaching-groups',
+    label: 'Fachgruppen',
+    path: '#/fachgruppen',
+    description: 'Fachgruppen je Schuljahr.',
+    requires: 'teaching_groups.view'
   },
   {
     id: 'account',
