@@ -146,6 +146,40 @@ describe('Fachgruppen: Detailansicht', () => {
   });
 });
 
+describe('Fachgruppen: Lehrkraefte in der Detailansicht (Ticket #67)', () => {
+  const TEACHER = { id: 't1', login_name: 'mueller', email: null, status: 'active' };
+  const setup = (canManageAssignments: boolean) => {
+    const detail = group('g1', 'AES 1', EN, [C7A]);
+    const { client, calls } = fakeClient({
+      ...yearsRoute(Y2627),
+      ...groupsRoute({ 'sy-2': [detail] }),
+      'GET /api/teaching-groups/g1': { data: { teaching_group: detail } },
+      'GET /api/teacher-assignments': { data: { teacher_assignments: [{ id: 'a1', teaching_group_id: 'g1', teacher: TEACHER, starts_on: '2026-09-14', ends_on: null, last_day: '2027-07-29', status: 'running' }] } },
+      'GET /api/teacher-assignments/teachers': { data: { teachers: [TEACHER] } }
+    });
+    render(<TeachingGroupsPage apiClient={client} canManage={false} canManageAssignments={canManageAssignments} />);
+    return calls;
+  };
+
+  it('zeigt den Abschnitt „Lehrkraefte“ der geoeffneten Fachgruppe nur lesend ohne das Verwaltungsrecht', async () => {
+    const calls = setup(false);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details: AES 1' }));
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Lehrkräfte' })).toBeInTheDocument();
+    expect(await screen.findByRole('rowheader', { name: 'mueller' })).toBeInTheDocument();
+    expect(calls.find((c) => c.url === '/api/teacher-assignments')?.params).toEqual({ teaching_group_id: 'g1' });
+    expect(screen.queryByRole('form', { name: 'Lehrkraft zuordnen' })).not.toBeInTheDocument();
+  });
+
+  it('bietet mit teacher_assignments.manage das Zuordnen-Formular an', async () => {
+    setup(true);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details: AES 1' }));
+
+    expect(await screen.findByRole('form', { name: 'Lehrkraft zuordnen' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Beenden: mueller' })).toBeInTheDocument();
+  });
+});
+
 describe('Fachgruppen: Detailansicht einer archivierten Fachgruppe', () => {
   it('markiert die archivierte Fachgruppe in der Detailansicht', async () => {
     const detail = { ...group('g1', 'AES 1', EN), archived: true };
@@ -160,6 +194,25 @@ describe('Fachgruppen: Detailansicht einer archivierten Fachgruppe', () => {
 
     const detailView = await screen.findByRole('main');
     expect(await within(detailView).findByText('Archiviert')).toBeInTheDocument();
+  });
+
+  it('bietet in einer archivierten Fachgruppe kein Zuordnen an, Beenden bleibt moeglich (Ticket #67)', async () => {
+    const teacher = { id: 't1', login_name: 'mueller', email: null, status: 'active' };
+    const detail = { ...group('g1', 'AES 1', EN), archived: true };
+    const { client } = fakeClient({
+      ...yearsRoute(Y2627),
+      'GET /api/teaching-groups': (call: FakeCall) => ({ data: { teaching_groups: call.params?.include_archived === 1 ? [detail] : [] } }),
+      'GET /api/teaching-groups/g1': { data: { teaching_group: detail } },
+      'GET /api/teacher-assignments': { data: { teacher_assignments: [{ id: 'a1', teaching_group_id: 'g1', teacher, starts_on: '2026-09-14', ends_on: null, last_day: '2027-07-29', status: 'running' }] } },
+      'GET /api/teacher-assignments/teachers': { data: { teachers: [teacher] } }
+    });
+    render(<TeachingGroupsPage apiClient={client} canManage={false} canManageAssignments />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Archivierte anzeigen' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Details: AES 1' }));
+
+    expect(await screen.findByRole('button', { name: 'Beenden: mueller' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Lehrkraft zuordnen' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Die Fachgruppe ist archiviert: Ihr lassen sich keine Lehrkräfte neu zuordnen/)).toBeInTheDocument();
   });
 });
 

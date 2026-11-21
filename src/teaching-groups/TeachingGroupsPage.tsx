@@ -10,6 +10,8 @@ interface Props {
   apiClient: AxiosInstance;
   /** Recht `teaching_groups.manage` aus GET /api/me; ohne es gibt es kein Anlegen-Formular. */
   canManage: boolean;
+  /** Recht `teacher_assignments.manage` (Ticket #67): Lehrkräfte in der Detailansicht zuordnen, beenden, löschen. Standard: nein. */
+  canManageAssignments?: boolean;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * anlegen und in einer Detailansicht mit ihren Klassen oeffnen. Nutzbar mit nur `teaching_groups.view`: Schuljahre, Faecher
  * und Klassen kommen von den Endpunkten der Fachgruppen, nicht von denen der Schuljahre, Faecher und Klassen.
  */
-export default function TeachingGroupsPage({ apiClient, canManage }: Props) {
+export default function TeachingGroupsPage({ apiClient, canManage, canManageAssignments = false }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
 
@@ -32,7 +34,7 @@ export default function TeachingGroupsPage({ apiClient, canManage }: Props) {
   const selected = years?.find((y) => y.id === selectedId);
 
   if (openGroupId !== null) {
-    return <TeachingGroupDetail key={openGroupId} apiClient={apiClient} id={openGroupId} onBack={() => setOpenGroupId(null)} />;
+    return <TeachingGroupDetail key={openGroupId} apiClient={apiClient} id={openGroupId} canManageAssignments={canManageAssignments} onBack={() => setOpenGroupId(null)} />;
   }
 
   return (
