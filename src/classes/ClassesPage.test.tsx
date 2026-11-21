@@ -222,3 +222,50 @@ describe('Klassen: Anlegen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Die Klasse konnte nicht angelegt werden');
   });
 });
+
+describe('Klassen: Detailansicht mit Klassenleitung (Ticket #68)', () => {
+  const open = async (canManageAssignments: boolean, archived = false) => {
+    const sevenA = { ...klass('c1', 7, '7a'), archived };
+    const setupResult = fakeClient({
+      ...yearsRoute(Y2627),
+      ...classesRoute({ 'sy-2': [sevenA] }),
+      'GET /api/class-leaders': { data: { class_leaders: [] } },
+      'GET /api/teacher-assignments/teachers': { data: { teachers: [] } }
+    });
+    render(<ClassesPage apiClient={setupResult.client} canManage={false} canManageAssignments={canManageAssignments} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details: 7a' }));
+    return setupResult;
+  };
+
+  it('oeffnet die Klasse mit Schuljahr, Klassenstufe und dem Abschnitt „Klassenleitung“ und geht zurueck zur Liste', async () => {
+    const { calls } = await open(false);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Klasse 7a' })).toBeInTheDocument();
+    expect(screen.getByText('2026/27')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Klassenleitung' })).toBeInTheDocument();
+    await waitFor(() => expect(calls.find((c) => c.url === '/api/class-leaders')?.params).toEqual({ class_id: 'c1' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zurück zu den Klassen' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Klassen' })).toBeInTheDocument();
+  });
+
+  it('mit dem Recht zeigt der Abschnitt das Formular, ohne es nur die Liste', async () => {
+    await open(true);
+    expect(await screen.findByRole('form', { name: 'Klassenleitung zuordnen' })).toBeInTheDocument();
+  });
+
+  it('ohne das Recht gibt es kein Formular', async () => {
+    await open(false);
+    await screen.findByText('Dieser Klasse ist noch keine Klassenleitung zugeordnet.');
+    expect(screen.queryByRole('form', { name: 'Klassenleitung zuordnen' })).not.toBeInTheDocument();
+  });
+
+  it('markiert eine archivierte Klasse und ordnet ihr nichts neu zu', async () => {
+    await open(true, true);
+
+    expect(await screen.findByText('Archiviert')).toBeInTheDocument();
+    expect(await screen.findByText(/Die Klasse ist archiviert/)).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Klassenleitung zuordnen' })).not.toBeInTheDocument();
+  });
+});

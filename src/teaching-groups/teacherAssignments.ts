@@ -28,6 +28,9 @@ export interface TeacherAssignment {
   status: AssignmentStatus | string;
 }
 
+/** Was der Zeitraum einer Zuordnung zeigt: gleich fuer Fachgruppen (#67) und Klassenleitungen (#68). */
+export type AssignmentTerm = Pick<TeacherAssignment, 'starts_on' | 'ends_on' | 'last_day'>;
+
 const STATUS_LABELS: Record<AssignmentStatus, string> = { upcoming: 'kommend', running: 'laufend', ended: 'beendet' };
 
 /** Anzeigename des Status einer Zuordnung. */
@@ -36,19 +39,19 @@ export function statusLabel(status: string): string {
 }
 
 /** Der Zeitraum fuer die Anzeige; ein offenes Ende nennt das Schuljahresende, bis zu dem die Zuordnung gilt. */
-export function periodText(assignment: TeacherAssignment): string {
+export function periodText(assignment: AssignmentTerm): string {
   return assignment.ends_on === null
     ? `ab ${formatDay(assignment.starts_on)}, offen (bis Schuljahresende ${formatDay(assignment.last_day)})`
     : `${formatDay(assignment.starts_on)} bis ${formatDay(assignment.ends_on)}`;
 }
 
 /** Beenden geht, solange die Zuordnung nicht beendet ist (die API entscheidet das Datum). */
-export function canEnd(assignment: TeacherAssignment): boolean {
+export function canEnd(assignment: Pick<TeacherAssignment, 'status'>): boolean {
   return assignment.status !== 'ended';
 }
 
 /** Loeschen nur, was noch nie gegolten hat, also kommend ist (die API prueft es mit der Uhr der Schule). */
-export function canDelete(assignment: TeacherAssignment): boolean {
+export function canDelete(assignment: Pick<TeacherAssignment, 'status'>): boolean {
   return assignment.status === 'upcoming';
 }
 

@@ -10,6 +10,8 @@ interface Props {
   schoolYear: { id: string; name: string };
   /** Recht `classes.manage` aus GET /api/me; ohne es gibt es kein Anlegen-Formular (die API verweigert es ohnehin). */
   canManage: boolean;
+  /** Oeffnet die Detailansicht einer Klasse (Ticket #68); ohne sie gibt es keine Schaltflaeche „Details“ (z. B. in der Schuljahr-Detailansicht). */
+  onOpen?: (schoolClass: SchoolClass) => void;
 }
 
 /**
@@ -21,7 +23,7 @@ interface Props {
  * Tabelle wird auf dem Smartphone per CSS zu Karten (`data-label` je Zelle). Beim Wechsel des Schuljahres neu mounten
  * (`key`), dann beginnen Eingaben und Meldungen frisch.
  */
-export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props) {
+export default function ClassesPanel({ apiClient, schoolYear, canManage, onOpen }: Props) {
   const [gradeLevel, setGradeLevel] = useState('');
   const [name, setName] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -144,7 +146,7 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
               <tr>
                 <th scope="col">Klasse</th>
                 <th scope="col">Klassenstufe</th>
-                {canManage && <th scope="col">Aktionen</th>}
+                {(canManage || onOpen) && <th scope="col">Aktionen</th>}
               </tr>
             </thead>
             <tbody>
@@ -160,9 +162,15 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
                     )}
                   </th>
                   <td data-label="Klassenstufe">{c.grade_level}</td>
-                  {canManage && (
+                  {(canManage || onOpen) && (
                     <td data-label="Aktionen">
-                      {!c.archived && (
+                      {onOpen && (
+                        <>
+                          <Button variant="secondary" aria-label={`Details: ${c.name}`} onClick={() => onOpen(c)}>Details</Button>
+                          {canManage && ' '}
+                        </>
+                      )}
+                      {canManage && !c.archived && (
                         <>
                           <Button variant="secondary" disabled={busy} aria-label={`Bearbeiten: ${c.name}`} onClick={() => setEditing(c)}>Bearbeiten</Button>{' '}
                           <Button
@@ -175,7 +183,7 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
                           </Button>{' '}
                         </>
                       )}
-                      {c.archived && (
+                      {canManage && c.archived && (
                         <>
                           <Button
                             variant="secondary"
@@ -187,7 +195,7 @@ export default function ClassesPanel({ apiClient, schoolYear, canManage }: Props
                           </Button>{' '}
                         </>
                       )}
-                      <Button variant="secondary" disabled={busy} aria-label={`Löschen: ${c.name}`} onClick={() => setDeleting(c)}>Löschen</Button>
+                      {canManage && <Button variant="secondary" disabled={busy} aria-label={`Löschen: ${c.name}`} onClick={() => setDeleting(c)}>Löschen</Button>}
                     </td>
                   )}
                 </tr>

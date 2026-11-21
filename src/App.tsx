@@ -117,7 +117,7 @@ export default function App({
           canManageClasses={hasPermission(me, 'classes.manage')}
         />
       ) : portal.id === 'classes' ? (
-        <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} />
+        <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} canManageAssignments={hasPermission(me, 'teacher_assignments.manage')} />
       ) : portal.id === 'subjects' ? (
         <SubjectsPage apiClient={apiClient} canManage={hasPermission(me, 'subjects.manage')} />
       ) : portal.id === 'school-settings' ? (
