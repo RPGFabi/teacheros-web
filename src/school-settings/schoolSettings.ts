@@ -14,13 +14,13 @@ export interface SchoolSetting {
 
 /** Anzeigename der Einstellungen, die die Seite kennt; eine unbekannte Einstellung der API zeigt die Seite mit ihrem Schluessel. */
 export const SETTING_LABELS: Record<string, string> = {
-  max_teachers_per_subject_group: 'Lehrkräfte je Fachgruppe',
+  max_teachers_per_teaching_group: 'Lehrkräfte je Fachgruppe',
   max_class_leaders_per_class: 'Klassenleitungen je Klasse'
 };
 
 /** Erklaerung, was die Einstellung begrenzt. */
 export const SETTING_DESCRIPTIONS: Record<string, string> = {
-  max_teachers_per_subject_group: 'Wie viele Lehrkräfte eine Fachgruppe höchstens zugleich hat.',
+  max_teachers_per_teaching_group: 'Wie viele Lehrkräfte eine Fachgruppe höchstens zugleich hat.',
   max_class_leaders_per_class: 'Wie viele Klassenleitungen eine Klasse höchstens zugleich hat.'
 };
 

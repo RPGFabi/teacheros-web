@@ -5,7 +5,7 @@ import { describeSchoolSettingsFailure, settingProblem, type SchoolSetting } fro
 const failure = (status: number, code?: string) =>
   new AxiosError('x', 'ERR_BAD_REQUEST', undefined, null, { data: code ? { error: 'x', code } : {}, status, statusText: '', headers: {}, config: {} as never });
 
-const teachers: SchoolSetting = { key: 'max_teachers_per_subject_group', value: 2, default: 2, min: 1, max: 50 };
+const teachers: SchoolSetting = { key: 'max_teachers_per_teaching_group', value: 2, default: 2, min: 1, max: 50 };
 
 describe('Pruefung einer Eingabe', () => {
   it.each(['1', '2', '50', ' 7 '])('akzeptiert "%s"', (typed) => {

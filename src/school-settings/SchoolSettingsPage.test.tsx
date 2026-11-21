@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import SchoolSettingsPage from './SchoolSettingsPage';
 import { fakeClient, type FakeCall } from '../test/fakeHttp';
 
-const TEACHERS = { key: 'max_teachers_per_subject_group', value: 2, default: 2, min: 1, max: 50 };
+const TEACHERS = { key: 'max_teachers_per_teaching_group', value: 2, default: 2, min: 1, max: 50 };
 const LEADERS = { key: 'max_class_leaders_per_class', value: 2, default: 2, min: 1, max: 10 };
 
 const setup = (extra: Record<string, Parameters<typeof fakeClient>[0][string]> = {}) => {
@@ -74,7 +74,7 @@ describe('Schuleinstellungen: Aendern', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('Schuleinstellungen gespeichert.');
     expect(writes()).toHaveLength(1);
-    expect(writes()[0]).toMatchObject({ method: 'POST', url: '/api/school-settings/update', data: { max_teachers_per_subject_group: 5 } });
+    expect(writes()[0]).toMatchObject({ method: 'POST', url: '/api/school-settings/update', data: { max_teachers_per_teaching_group: 5 } });
     expect(await teachersField()).toHaveValue(5);
   });
 
@@ -90,7 +90,7 @@ describe('Schuleinstellungen: Aendern', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
     await screen.findByRole('status');
-    expect(writes()[0].data).toEqual({ max_teachers_per_subject_group: 3, max_class_leaders_per_class: 1 });
+    expect(writes()[0].data).toEqual({ max_teachers_per_teaching_group: 3, max_class_leaders_per_class: 1 });
   });
 
   it('sperrt Speichern, solange nichts geaendert ist', async () => {
