@@ -6,7 +6,7 @@ import LoginPage from './auth/LoginPage';
 import { lockNotice } from './auth/lockNotice';
 import { useSessionEndGuard } from './auth/useSessionEndGuard';
 import InvitationPage from './invitation/InvitationPage';
-import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/client';
+import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
 
 function Gate({ apiClient, authClient, notice }: { apiClient: AxiosInstance; authClient: AxiosInstance; notice?: string }) {
   const { isAuthReady, isAuthenticated, logout } = useAuth();

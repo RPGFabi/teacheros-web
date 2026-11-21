@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { portals, type PortalId } from './app/routes';
+import { visiblePortals, type PortalId } from './app/routes';
 import AccountPage, { type Me } from './account/AccountPage';
 import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions';
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
+import ClassesPage from './classes/ClassesPage';
+import SchoolYearsPage from './school-years/SchoolYearsPage';
 import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
-import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/client';
+import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
 import { errorCode } from './api/errors';
 
 export default function App({
@@ -54,11 +56,9 @@ export default function App({
     };
   }, [apiClient]);
 
-  // Die API liefert die fertige Rechte-Liste; hier wird nur nachgeschlagen, nichts ausgewertet.
-  const visiblePortals = portals.filter(
-    (p) => (!p.requires || hasPermission(me, p.requires)) && (!p.requiresAny || p.requiresAny.some((permission) => hasPermission(me, permission)))
-  );
-  const portal = visiblePortals.find((p) => p.id === active) ?? visiblePortals[0];
+  // Die API liefert Module und Rechte fertig; hier wird nur nachgeschlagen, nichts ausgewertet.
+  const shownPortals = visiblePortals(me);
+  const portal = shownPortals.find((p) => p.id === active) ?? shownPortals[0];
 
   if (enrollmentDemanded || me?.session?.mfa_enrollment_required) {
     return <MfaEnrollmentPage authClient={authClient} onReauthenticate={onReauthenticate} />;
@@ -79,7 +79,7 @@ export default function App({
         </Button>
       </header>
       <nav id="main-nav" aria-label="Hauptnavigation" className={menuOpen ? 'nav nav-open' : 'nav'}>
-        {visiblePortals.map((p) => (
+        {shownPortals.map((p) => (
           <a
             key={p.id}
             href={p.path}
@@ -106,6 +106,15 @@ export default function App({
         />
       ) : portal.id === 'roles' ? (
         <RolesPage apiClient={apiClient} />
+      ) : portal.id === 'school-years' ? (
+        <SchoolYearsPage
+          apiClient={apiClient}
+          canManage={hasPermission(me, 'school_years.manage')}
+          canViewClasses={hasPermission(me, 'classes.view')}
+          canManageClasses={hasPermission(me, 'classes.manage')}
+        />
+      ) : portal.id === 'classes' ? (
+        <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>

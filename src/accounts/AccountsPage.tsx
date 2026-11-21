@@ -6,6 +6,7 @@ import { SYNC_PENDING_LABEL, statusLabel } from '../account/status';
 import { formatDate } from '../shared';
 import InvitationCards, { type InvitationCardData } from '../invitation/InvitationCards';
 import AccountDetail from './AccountDetail';
+import { appEnv } from '../config/env';
 
 export interface AccountRow {
   id: string;
@@ -77,7 +78,7 @@ export default function AccountsPage({
   canViewAccess = false,
   canAssignRoles = false,
   canAssignPermissions = false,
-  schoolName = import.meta.env.VITE_APP_NAME || 'Schulplattform',
+  schoolName = appEnv.appName,
   origin = window.location.origin
 }: Props) {
   const [accounts, setAccounts] = useState<AccountRow[] | null>(null);

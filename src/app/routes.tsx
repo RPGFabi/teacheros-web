@@ -1,6 +1,8 @@
-import { ADMINISTRATION_PERMISSIONS } from '../account/permissions';
+import type { Me } from '../account/AccountPage';
+import { ADMINISTRATION_PERMISSIONS, hasPermission } from '../account/permissions';
+import { isModuleActive, type ModuleId } from './modules';
 
-export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'account';
+export type PortalId = 'teacher' | 'admin' | 'accounts' | 'roles' | 'school-years' | 'classes' | 'account';
 
 export interface Portal {
   id: PortalId;
@@ -11,6 +13,21 @@ export interface Portal {
   requires?: string;
   /** Wie `requires`, aber ein beliebiges der Rechte genuegt (z. B. die drei Verwaltungsrechte der Rollen). */
   requiresAny?: string[];
+  /** Modul, zu dem der Menuepunkt gehoert; ohne Angabe `core` (immer aktiv). Inaktive Module sind ausgeblendet. */
+  module?: ModuleId;
+}
+
+/**
+ * Menuepunkte, die das Konto sieht: Modul freigegeben und Recht vorhanden. Wie in der API zuerst das Modul, dann das
+ * Recht; beides kommt fertig aus GET /api/me, hier wird nur nachgeschlagen.
+ */
+export function visiblePortals(me: Me | null, list: Portal[] = portals): Portal[] {
+  return list.filter(
+    (p) =>
+      isModuleActive(me, p.module ?? 'core') &&
+      (!p.requires || hasPermission(me, p.requires)) &&
+      (!p.requiresAny || p.requiresAny.some((permission) => hasPermission(me, permission)))
+  );
 }
 
 // Portale laut Source of Truth 17.11. Dazu kommt "Mein Konto" fuer jedes angemeldete Konto.
@@ -40,6 +57,20 @@ export const portals: Portal[] = [
     path: '#/rollen',
     description: 'Rollen und Rechte der Schulinstanz.',
     requiresAny: ADMINISTRATION_PERMISSIONS
+  },
+  {
+    id: 'school-years',
+    label: 'Schuljahre',
+    path: '#/schuljahre',
+    description: 'Schuljahre der Schulinstanz.',
+    requires: 'school_years.view'
+  },
+  {
+    id: 'classes',
+    label: 'Klassen',
+    path: '#/klassen',
+    description: 'Klassen je Schuljahr.',
+    requires: 'classes.view'
   },
   {
     id: 'account',
