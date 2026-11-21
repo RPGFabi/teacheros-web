@@ -5,6 +5,8 @@ export interface FakeCall {
   url: string;
   authorization?: string;
   data?: unknown;
+  /** Query-Parameter (`params`), nicht Teil von `url`. */
+  params?: Record<string, unknown>;
 }
 
 type Reply = { status?: number; data?: unknown } | ((call: FakeCall) => { status?: number; data?: unknown });
@@ -19,6 +21,7 @@ export function fakeClient(routes: Record<string, Reply>): { client: AxiosInstan
     const call: FakeCall = {
       method: (config.method ?? 'get').toUpperCase(),
       url: config.url ?? '',
+      params: config.params as Record<string, unknown> | undefined,
       authorization: config.headers?.get?.('Authorization') as string | undefined,
       data: typeof config.data === 'string' ? JSON.parse(config.data) : config.data
     };

@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Sonst setzt checkout einen Authorization-Header mit GITHUB_TOKEN (nur dieses Repo), der den
+          # PACKAGES_TOKEN fuer die privaten Pakete ueberstimmt: npm ci meldet dann "Repository not found".
+          persist-credentials: false
       # Private GitHub-Pakete (@hoelzle/react-ui, react-auth) brauchen Lesezugriff.
       # Secret PACKAGES_TOKEN: PAT mit Lesezugriff auf RPGFabi/React-UI und RPGFabi/React-Auth.
       # package-lock.json loest die Pakete als git+ssh auf; auch diese Formen auf HTTPS + Token umlenken.
