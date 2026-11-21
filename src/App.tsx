@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button, Card } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { visiblePortals, type PortalId } from './app/routes';
@@ -8,13 +8,41 @@ import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import ClassesPage from './classes/ClassesPage';
 import SchoolYearsPage from './school-years/SchoolYearsPage';
-import { apiClient as defaultApiClient } from './api/clients';
+import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
+import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
+import { errorCode } from './api/errors';
 
-export default function App({ apiClient = defaultApiClient, initialPortal = 'teacher' }: { apiClient?: AxiosInstance; initialPortal?: PortalId }) {
+export default function App({
+  apiClient = defaultApiClient,
+  authClient = defaultAuthClient,
+  initialPortal = 'teacher',
+  onReauthenticate = () => undefined
+}: {
+  apiClient?: AxiosInstance;
+  authClient?: AxiosInstance;
+  initialPortal?: PortalId;
+  /** Beendet die Sitzung fuer eine erneute Anmeldung und zeigt dort den Hinweis (nach der MFA-Einrichtung). */
+  onReauthenticate?: (notice: string) => void;
+}) {
   const [active, setActive] = useState<PortalId>(initialPortal);
   const [menuOpen, setMenuOpen] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState<string | null>(null);
+  // B3: Konto mit MFA-Pflicht ohne zweiten Faktor angemeldet (aus GET /api/me oder einer 403-Antwort mitten in der Sitzung,
+  // etwa wenn gerade eine Pflichtrolle vergeben wurde).
+  const [enrollmentDemanded, setEnrollmentDemanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const id = apiClient.interceptors.response.use(
+      (response) => response,
+      (error: unknown) => {
+        const status = (error as { response?: { status?: number } } | null)?.response?.status;
+        if (status === 403 && errorCode(error) === 'mfa_enrollment_required') setEnrollmentDemanded(true);
+        return Promise.reject(error);
+      }
+    );
+    return () => apiClient.interceptors.response.eject(id);
+  }, [apiClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +59,10 @@ export default function App({ apiClient = defaultApiClient, initialPortal = 'tea
   // Die API liefert Module und Rechte fertig; hier wird nur nachgeschlagen, nichts ausgewertet.
   const shownPortals = visiblePortals(me);
   const portal = shownPortals.find((p) => p.id === active) ?? shownPortals[0];
+
+  if (enrollmentDemanded || me?.session?.mfa_enrollment_required) {
+    return <MfaEnrollmentPage authClient={authClient} onReauthenticate={onReauthenticate} />;
+  }
 
   return (
     <div className="app-shell">

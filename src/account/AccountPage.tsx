@@ -8,7 +8,8 @@ export interface Me {
   permissions: string[];
   /** Aktive Module der Schulinstanz, immer mit `core` (Ticket #13). Fehlt bei aelteren API-Staenden: dann nur `core`. */
   modules?: string[];
-  session: { used_mfa: boolean; expires_at: string };
+  /** `mfa_enrollment_required`: MFA-Pflicht, aber ohne zweiten Faktor angemeldet (ADR 0002 B3); fachliche Routen sind gesperrt. */
+  session: { used_mfa: boolean; expires_at: string; mfa_enrollment_required?: boolean };
 }
 
 export default function AccountPage({ me, error }: { me: Me | null; error: string | null }) {
