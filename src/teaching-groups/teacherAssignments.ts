@@ -79,6 +79,7 @@ const FAILURE_TEXTS: FailureTexts<TeacherAssignmentAction> = {
   codes: {
     forbidden: 'Dafür fehlt Ihnen das Recht „Lehrkraft-Zuordnungen verwalten“.',
     teaching_group_not_found: 'Die Fachgruppe gibt es nicht mehr. Bitte laden Sie die Seite neu.',
+    teaching_group_archived: 'Die Fachgruppe ist archiviert. Ihr lassen sich keine Lehrkräfte neu zuordnen. Stellen Sie sie zuerst wieder her.',
     teacher_assignment_not_found: 'Die Zuordnung gibt es nicht mehr. Bitte laden Sie die Seite neu.',
     teacher_not_selectable: 'Das Konto ist keine wählbare Lehrkraft mehr: Es braucht die Rolle Lehrkraft und darf nicht deaktiviert sein. Bitte wählen Sie neu.',
     assignment_overlap: 'Die Lehrkraft ist an diesen Tagen schon dieser Fachgruppe zugeordnet. Gültigkeitszeiträume derselben Lehrkraft dürfen sich nicht überschneiden; nacheinander ist möglich.',

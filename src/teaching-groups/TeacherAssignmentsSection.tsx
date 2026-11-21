@@ -20,6 +20,8 @@ interface Props {
   teachingGroupId: string;
   /** Recht `teacher_assignments.manage` aus GET /api/me; ohne es gibt es weder Formular noch Aktionen (die API verweigert sie ohnehin). */
   canManage: boolean;
+  /** Die Fachgruppe ist archiviert (Ticket #65): ihr wird nichts neu zugeordnet; bestehende Zuordnungen lassen sich weiter beenden. */
+  archived?: boolean;
 }
 
 const STATUS_VARIANT: Record<string, 'success' | 'primary' | 'neutral'> = { running: 'success', upcoming: 'primary', ended: 'neutral' };
@@ -31,7 +33,7 @@ const STATUS_VARIANT: Record<string, 'success' | 'primary' | 'neutral'> = { runn
  * (letzter Tag, leer = heute) und Loeschen (mit Bestaetigung, nur fuer kommende). Welche Zeitraeume, Ueberschneidungen und
  * Obergrenzen zulaessig sind, entscheidet allein die API; hier wird ihre Ablehnung in einen Hinweis uebersetzt.
  */
-export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, canManage }: Props) {
+export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, canManage, archived = false }: Props) {
   const formId = useId();
   const [teacherId, setTeacherId] = useState('');
   const [startsOn, setStartsOn] = useState('');
@@ -98,7 +100,12 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
   return (
     <>
       <h2>Lehrkräfte</h2>
-      {canManage && (
+      {canManage && archived && (
+        <Card>
+          <p>Die Fachgruppe ist archiviert: Ihr lassen sich keine Lehrkräfte neu zuordnen. Bestehende Zuordnungen bleiben und lassen sich beenden.</p>
+        </Card>
+      )}
+      {canManage && !archived && (
         <Card>
           <form aria-label="Lehrkraft zuordnen" onSubmit={(event) => void submit(event)}>
             <h3>Lehrkraft zuordnen</h3>
