@@ -34,6 +34,14 @@ export default function TeachingGroupDetail({ apiClient, id, onBack }: Props) {
               <dd>{group.school_year.name}</dd>
               <dt>Fach</dt>
               <dd>{group.subject.code} – {group.subject.name}</dd>
+              {group.archived && (
+                <>
+                  <dt>Status</dt>
+                  <dd>
+                    <Chip variant="neutral">Archiviert</Chip>
+                  </dd>
+                </>
+              )}
             </dl>
           </Card>
           <h2>Klassen</h2>
