@@ -10,6 +10,8 @@ import type { Subject } from '../subjects/subjects';
 export interface TeachingGroup {
   id: string;
   name: string;
+  /** Archivierte Fachgruppe (Glossar: Archivierung, Ticket #65): lesbar, schreibgeschuetzt, nicht waehlbar. */
+  archived: boolean;
   school_year: { id: string; name: string };
   subject: Subject;
   classes: SchoolClass[];
@@ -45,7 +47,7 @@ export function teachingGroupFormProblem(name: string, subjectId: string, classI
 }
 
 /** Aktionen auf Fachgruppen; bestimmt den allgemeinen Fehlertext, wenn kein Code passt. */
-export type TeachingGroupAction = 'create';
+export type TeachingGroupAction = 'create' | 'update' | 'archive' | 'restore' | 'delete';
 
 /** Texte fuer die Fehler der Fachgruppen-Aktionen (`{error, code}`). */
 const FAILURE_TEXTS: FailureTexts<TeachingGroupAction> = {
@@ -55,16 +57,39 @@ const FAILURE_TEXTS: FailureTexts<TeachingGroupAction> = {
     subject_not_selectable: 'Das Fach gibt es nicht mehr oder es ist nicht wählbar. Bitte wählen Sie ein anderes Fach.',
     class_not_selectable: 'Mindestens eine Klasse gibt es nicht mehr, ist archiviert oder gehört nicht zu diesem Schuljahr. Bitte wählen Sie die Klassen neu.',
     school_year_not_found: 'Das Schuljahr gibt es nicht mehr. Bitte laden Sie die Seite neu.',
-    invalid_request: `Bitte geben Sie eine Bezeichnung mit 1 bis ${MAX_NAME_LENGTH} Zeichen an und wählen Sie ein Fach und mindestens eine Klasse.`
+    invalid_request: `Bitte geben Sie eine Bezeichnung mit 1 bis ${MAX_NAME_LENGTH} Zeichen an und wählen Sie ein Fach und mindestens eine Klasse.`,
+    teaching_group_not_found: 'Die Fachgruppe gibt es nicht mehr. Die Liste wurde neu geladen.',
+    teaching_group_archived: 'Die Fachgruppe ist archiviert und lässt sich nicht ändern. Stellen Sie sie zuerst wieder her.',
+    teaching_group_already_archived: 'Die Fachgruppe ist bereits archiviert.',
+    teaching_group_not_archived: 'Die Fachgruppe ist nicht archiviert.',
+    teaching_group_linked: 'Die Fachgruppe ist verknüpft und lässt sich nicht löschen. Archivieren Sie sie stattdessen: Sie bleibt lesbar, ist aber nicht mehr wählbar.'
   },
+  // Ein Einwand eines anderen Moduls gegen das Entfernen einer Klasse kommt mit eigenem Code und deutscher Meldung.
+  showApiMessageOnStatus: 409,
   fallback: {
-    create: 'Die Fachgruppe konnte nicht angelegt werden. Bitte versuchen Sie es erneut.'
+    create: 'Die Fachgruppe konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+    update: 'Die Fachgruppe konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+    archive: 'Die Fachgruppe konnte nicht archiviert werden. Bitte versuchen Sie es erneut.',
+    restore: 'Die Fachgruppe konnte nicht wiederhergestellt werden. Bitte versuchen Sie es erneut.',
+    delete: 'Die Fachgruppe konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.'
   }
 };
 
 /** Text zu einer abgelehnten Anfrage auf Fachgruppen. */
 export function describeTeachingGroupFailure(err: unknown, action: TeachingGroupAction = 'create'): string {
   return describeFailure(err, action, FAILURE_TEXTS);
+}
+
+/**
+ * Die Klassen fuer das Bearbeiten-Formular: die eigenen der Fachgruppe (auch eine nach dem Verknuepfen archivierte) und die
+ * waehlbaren des Schuljahres, ohne Doppelte, nach Klassenstufe und natuerlicher Bezeichnung wie in der API.
+ */
+export function editableClasses(own: SchoolClass[], selectable: SchoolClass[]): SchoolClass[] {
+  const byId = new Map<string, SchoolClass>();
+  for (const c of [...selectable, ...own]) {
+    byId.set(c.id, c);
+  }
+  return [...byId.values()].sort((a, b) => a.grade_level - b.grade_level || a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }));
 }
 
 /** Die Klassen fuer die Anzeige in einer Zeile: "7a, 7b"; eine nach dem Verknuepfen archivierte Klasse ist als „(archiviert)“ markiert. */

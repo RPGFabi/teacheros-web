@@ -146,6 +146,23 @@ describe('Fachgruppen: Detailansicht', () => {
   });
 });
 
+describe('Fachgruppen: Detailansicht einer archivierten Fachgruppe', () => {
+  it('markiert die archivierte Fachgruppe in der Detailansicht', async () => {
+    const detail = { ...group('g1', 'AES 1', EN), archived: true };
+    const { client } = fakeClient({
+      ...yearsRoute(Y2627),
+      'GET /api/teaching-groups': (call: FakeCall) => ({ data: { teaching_groups: call.params?.include_archived === 1 ? [detail] : [] } }),
+      'GET /api/teaching-groups/g1': { data: { teaching_group: detail } }
+    });
+    render(<TeachingGroupsPage apiClient={client} canManage={false} />);
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Archivierte anzeigen' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Details: AES 1' }));
+
+    const detailView = await screen.findByRole('main');
+    expect(await within(detailView).findByText('Archiviert')).toBeInTheDocument();
+  });
+});
+
 describe('Fachgruppen: Anlegen', () => {
   const setup = (extra: Record<string, Parameters<typeof fakeClient>[0][string]> = {}, choices = { subjects: [EN, MA], classes: [C7A, C7B] }) => {
     const byYear: Record<string, unknown[]> = { 'sy-2': [group('g1', 'Ma 7')] };
