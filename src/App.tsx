@@ -7,6 +7,7 @@ import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import ClassesPage from './classes/ClassesPage';
+import SubjectsPage from './subjects/SubjectsPage';
 import SchoolYearsPage from './school-years/SchoolYearsPage';
 import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
@@ -115,6 +116,8 @@ export default function App({
         />
       ) : portal.id === 'classes' ? (
         <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} />
+      ) : portal.id === 'subjects' ? (
+        <SubjectsPage apiClient={apiClient} canManage={hasPermission(me, 'subjects.manage')} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
