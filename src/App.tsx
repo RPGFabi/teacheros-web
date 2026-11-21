@@ -8,6 +8,7 @@ import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import ClassesPage from './classes/ClassesPage';
 import SubjectsPage from './subjects/SubjectsPage';
+import SchoolSettingsPage from './school-settings/SchoolSettingsPage';
 import SchoolYearsPage from './school-years/SchoolYearsPage';
 import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
@@ -118,6 +119,8 @@ export default function App({
         <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} />
       ) : portal.id === 'subjects' ? (
         <SubjectsPage apiClient={apiClient} canManage={hasPermission(me, 'subjects.manage')} />
+      ) : portal.id === 'school-settings' ? (
+        <SchoolSettingsPage apiClient={apiClient} />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
