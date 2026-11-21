@@ -312,3 +312,38 @@ describe('Menuepunkt Schuleinstellungen (Ticket #66, Rechte aus GET /api/me)', (
     expect(screen.queryByRole('link', { name: 'Schuleinstellungen' })).not.toBeInTheDocument();
   });
 });
+
+describe('Menuepunkt Fachgruppen (Ticket #64, Rechte aus GET /api/me)', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    modules: ['core'],
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+  const open = async (permissions: string[]) => {
+    const { client, calls } = fakeClient({
+      'GET /api/me': { data: ME(permissions) },
+      'GET /api/teaching-groups/school-years': { data: { school_years: [] } }
+    });
+    render(<App apiClient={client} />);
+    const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    await userEvent.click(await within(nav).findByRole('link', { name: 'Fachgruppen' }));
+    return calls;
+  };
+
+  it('zeigt Fachgruppen mit nur teaching_groups.view und oeffnet die Seite', async () => {
+    const calls = await open(['teaching_groups.view']);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Fachgruppen' })).toBeInTheDocument();
+    expect(await screen.findByText(/Es gibt noch kein Schuljahr/)).toBeInTheDocument();
+    expect(calls.some((c) => c.url === '/api/teaching-groups/school-years')).toBe(true);
+  });
+
+  it.each([[[]], [['teaching_groups.manage']], [['classes.view', 'subjects.view', 'school_years.view']]])('blendet Fachgruppen ohne teaching_groups.view aus (Rechte: %j)', async (permissions) => {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(permissions) } });
+    render(<App apiClient={client} />);
+
+    await screen.findByRole('link', { name: 'Mein Konto' });
+    expect(screen.queryByRole('link', { name: 'Fachgruppen' })).not.toBeInTheDocument();
+  });
+});
