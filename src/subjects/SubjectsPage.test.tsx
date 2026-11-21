@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import SubjectsPage from './SubjectsPage';
 import { fakeClient, type FakeCall } from '../test/fakeHttp';
 
-const subject = (id: string, code: string, name: string) => ({ id, code, name });
+const subject = (id: string, code: string, name: string) => ({ id, code, name, archived: false });
 
 describe('Faecher: Liste', () => {
   it('zeigt einen Ladehinweis und listet die Faecher in der Reihenfolge der API', async () => {

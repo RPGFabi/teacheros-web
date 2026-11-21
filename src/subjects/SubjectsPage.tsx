@@ -1,25 +1,35 @@
 import { useCallback, useState, type FormEvent } from 'react';
-import { Button, Card, FormField, TextInput } from '@hoelzle/react-ui';
+import { Button, Card, Checkbox, Chip, ConfirmDialog, FormField, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { useResource } from '../shared/useResource';
+import SubjectEditForm from './SubjectEditForm';
 import { describeSubjectFailure, MAX_CODE_LENGTH, MAX_NAME_LENGTH, subjectFormProblem, type Subject, type SubjectAction } from './subjects';
 
 interface Props {
   apiClient: AxiosInstance;
-  /** Recht `subjects.manage` aus GET /api/me; ohne es gibt es kein Anlegen-Formular (die API verweigert es ohnehin). */
+  /** Recht `subjects.manage` aus GET /api/me; ohne es gibt es weder Anlegen-Formular noch Aktionen (die API verweigert sie ohnehin). */
   canManage: boolean;
 }
 
 /**
- * Seite „Fächer“ (Ticket #62): die Faecher der Schulinstanz in der Reihenfolge der API (natuerlich nach Kuerzel) und, mit
- * `subjects.manage`, das Anlegen mit Kuerzel und Bezeichnung. Ein Fach gilt unabhaengig vom Schuljahr. Die Tabelle wird auf dem
- * Smartphone per CSS zu Karten (`data-label` je Zelle).
+ * Seite „Fächer“ (Tickets #62, #63): die Faecher der Schulinstanz in der Reihenfolge der API (natuerlich nach Kuerzel) und, mit
+ * `subjects.manage`, das Anlegen mit Kuerzel und Bezeichnung sowie Bearbeiten (nur die Bezeichnung), Archivieren,
+ * Wiederherstellen und Loeschen (mit Bestaetigung). Archivierte Faecher (Glossar: Archivierung) sind ausgeblendet und mit dem
+ * Schalter „Archivierte anzeigen“ sichtbar, dann markiert und nur wiederherstellbar oder loeschbar. Ob ein Fach verknuepft ist,
+ * entscheidet allein die API (`subject_linked`). Ein Fach gilt unabhaengig vom Schuljahr. Die Tabelle wird auf dem Smartphone per
+ * CSS zu Karten (`data-label` je Zelle).
  */
 export default function SubjectsPage({ apiClient, canManage }: Props) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editing, setEditing] = useState<Subject | null>(null);
+  const [deleting, setDeleting] = useState<Subject | null>(null);
 
-  const fetchSubjects = useCallback(async () => (await apiClient.get<{ subjects: Subject[] }>('/api/subjects')).data.subjects, [apiClient]);
+  const fetchSubjects = useCallback(
+    async () => (await apiClient.get<{ subjects: Subject[] }>('/api/subjects', showArchived ? { params: { include_archived: 1 } } : undefined)).data.subjects,
+    [apiClient, showArchived]
+  );
   // Schreibzugriffe laden danach immer neu, auch nach einem Fehler: die Liste kann sich inzwischen geaendert haben.
   const { data: subjects, loadError, reload: load, busy, notice, error, run } = useResource<Subject[], SubjectAction>(fetchSubjects, describeSubjectFailure);
 
@@ -42,9 +52,32 @@ export default function SubjectsPage({ apiClient, canManage }: Props) {
     }
   };
 
+  /** Eine Aktion auf einem Fach (`POST /api/subjects/:id/<pfad>`); `success` ist die Erfolgsmeldung. */
+  const act = (action: SubjectAction, target: Subject, path: string, success: string, body?: object) =>
+    run(action, async () => {
+      await apiClient.post(`/api/subjects/${target.id}/${path}`, body);
+      return success;
+    });
+
+  const save = async (target: Subject, newName: string) => {
+    if (await act('update', target, 'update', `Fach ${target.code} gespeichert.`, { name: newName })) {
+      setEditing(null);
+    }
+  };
+
+  const remove = async (target: Subject) => {
+    setDeleting(null);
+    if ((await act('delete', target, 'delete', `Fach ${target.code} gelöscht.`)) && editing?.id === target.id) {
+      setEditing(null);
+    }
+  };
+
   return (
     <main className="content">
       <h1>Fächer</h1>
+      {canManage && editing && !editing.archived && (
+        <SubjectEditForm key={editing.id} subject={editing} busy={busy} onSubmit={(newName) => void save(editing, newName)} onCancel={() => setEditing(null)} />
+      )}
       {canManage && (
         <Card>
           <form aria-label="Fach anlegen" onSubmit={(event) => void submit(event)}>
@@ -66,7 +99,17 @@ export default function SubjectsPage({ apiClient, canManage }: Props) {
       )}
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Fach ${deleting?.code ?? ''} löschen?`}
+        description={`Fach ${deleting?.code ?? ''} (${deleting?.name ?? ''}) wird endgültig gelöscht, das Kürzel ist danach wieder frei. Das lässt sich nicht rückgängig machen. Ist am Fach schon etwas verknüpft, wird es nicht gelöscht; dann bleibt das Archivieren.`}
+        confirmText="Löschen"
+        variant="danger"
+        onConfirm={() => deleting && void remove(deleting)}
+        onCancel={() => setDeleting(null)}
+      />
       <Card>
+        <Checkbox label="Archivierte anzeigen" checked={showArchived} onChange={() => setShowArchived((value) => !value)} />
         {loadError && (
           <>
             <p role="alert">Die Fächer konnten nicht geladen werden.</p>
@@ -81,13 +124,52 @@ export default function SubjectsPage({ apiClient, canManage }: Props) {
               <tr>
                 <th scope="col">Kürzel</th>
                 <th scope="col">Bezeichnung</th>
+                {canManage && <th scope="col">Aktionen</th>}
               </tr>
             </thead>
             <tbody>
               {subjects.map((s) => (
                 <tr key={s.id}>
-                  <th scope="row">{s.code}</th>
+                  <th scope="row">
+                    {s.code}
+                    {s.archived && (
+                      <>
+                        {' '}
+                        <Chip variant="neutral">Archiviert</Chip>
+                      </>
+                    )}
+                  </th>
                   <td data-label="Bezeichnung">{s.name}</td>
+                  {canManage && (
+                    <td data-label="Aktionen">
+                      {!s.archived && (
+                        <>
+                          <Button variant="secondary" disabled={busy} aria-label={`Bearbeiten: ${s.code}`} onClick={() => setEditing(s)}>Bearbeiten</Button>{' '}
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            aria-label={`Archivieren: ${s.code}`}
+                            onClick={() => void act('archive', s, 'archive', `Fach ${s.code} archiviert.`)}
+                          >
+                            Archivieren
+                          </Button>{' '}
+                        </>
+                      )}
+                      {s.archived && (
+                        <>
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            aria-label={`Wiederherstellen: ${s.code}`}
+                            onClick={() => void act('restore', s, 'restore', `Fach ${s.code} wiederhergestellt.`)}
+                          >
+                            Wiederherstellen
+                          </Button>{' '}
+                        </>
+                      )}
+                      <Button variant="secondary" disabled={busy} aria-label={`Löschen: ${s.code}`} onClick={() => setDeleting(s)}>Löschen</Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
