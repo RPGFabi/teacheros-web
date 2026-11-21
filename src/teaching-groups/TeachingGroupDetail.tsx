@@ -2,16 +2,22 @@ import { useCallback } from 'react';
 import { Button, Card, Chip } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { useResource } from '../shared/useResource';
+import TeacherAssignmentsSection from './TeacherAssignmentsSection';
 import type { TeachingGroup } from './teachingGroups';
 
 interface Props {
   apiClient: AxiosInstance;
   id: string;
+  /** Recht `teacher_assignments.manage` aus GET /api/me; ohne es zeigt der Abschnitt „Lehrkräfte“ nur die Zuordnungen. */
+  canManageAssignments: boolean;
   onBack: () => void;
 }
 
-/** Detailansicht einer Fachgruppe (Ticket #64): Schuljahr, Fach und die Klassen der Fachgruppe (eine Menge, keine Hauptklasse). */
-export default function TeachingGroupDetail({ apiClient, id, onBack }: Props) {
+/**
+ * Detailansicht einer Fachgruppe (Ticket #64): Schuljahr, Fach und die Klassen der Fachgruppe (eine Menge, keine Hauptklasse),
+ * dazu der Abschnitt „Lehrkräfte“ mit den Lehrkraft-Zuordnungen (Ticket #67).
+ */
+export default function TeachingGroupDetail({ apiClient, id, canManageAssignments, onBack }: Props) {
   const fetchGroup = useCallback(async () => (await apiClient.get<{ teaching_group: TeachingGroup }>(`/api/teaching-groups/${id}`)).data.teaching_group, [apiClient, id]);
   const { data: group, loadError, reload } = useResource(fetchGroup);
 
@@ -52,6 +58,7 @@ export default function TeachingGroupDetail({ apiClient, id, onBack }: Props) {
               ))}
             </ul>
           </Card>
+          <TeacherAssignmentsSection apiClient={apiClient} teachingGroupId={group.id} canManage={canManageAssignments} />
         </>
       )}
     </main>

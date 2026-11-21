@@ -123,7 +123,11 @@ export default function App({
       ) : portal.id === 'school-settings' ? (
         <SchoolSettingsPage apiClient={apiClient} />
       ) : portal.id === 'teaching-groups' ? (
-        <TeachingGroupsPage apiClient={apiClient} canManage={hasPermission(me, 'teaching_groups.manage')} />
+        <TeachingGroupsPage
+          apiClient={apiClient}
+          canManage={hasPermission(me, 'teaching_groups.manage')}
+          canManageAssignments={hasPermission(me, 'teacher_assignments.manage')}
+        />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>
