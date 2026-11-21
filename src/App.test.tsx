@@ -283,6 +283,36 @@ describe('Menuepunkt Faecher (Ticket #62, Rechte aus GET /api/me)', () => {
   });
 });
 
+describe('Menuepunkt Schuleinstellungen (Ticket #66, Rechte aus GET /api/me)', () => {
+  const ME = (permissions: string[]) => ({
+    account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
+    permissions,
+    modules: ['core'],
+    session: { used_mfa: false, expires_at: '2026-11-17T12:00:00+00:00' }
+  });
+
+  it('zeigt Schuleinstellungen mit school_settings.manage und oeffnet die Seite', async () => {
+    const { client, calls } = fakeClient({
+      'GET /api/me': { data: ME(['school_settings.manage']) },
+      'GET /api/school-settings': { data: { school_settings: [] } }
+    });
+    render(<App apiClient={client} />);
+    const nav = screen.getByRole('navigation', { name: 'Hauptnavigation' });
+    await userEvent.click(await within(nav).findByRole('link', { name: 'Schuleinstellungen' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Schuleinstellungen' })).toBeInTheDocument();
+    expect(calls.some((c) => c.url === '/api/school-settings')).toBe(true);
+  });
+
+  it.each([[[]], [['school_years.manage', 'classes.manage']], [['accounts.view', 'roles.manage']]])('blendet Schuleinstellungen ohne school_settings.manage aus (Rechte: %j)', async (permissions) => {
+    const { client } = fakeClient({ 'GET /api/me': { data: ME(permissions) } });
+    render(<App apiClient={client} />);
+
+    await screen.findByRole('link', { name: 'Mein Konto' });
+    expect(screen.queryByRole('link', { name: 'Schuleinstellungen' })).not.toBeInTheDocument();
+  });
+});
+
 describe('Menuepunkt Fachgruppen (Ticket #64, Rechte aus GET /api/me)', () => {
   const ME = (permissions: string[]) => ({
     account: { id: '11111111-1111-4111-8111-111111111111', status: 'active', mfa_required: false },
