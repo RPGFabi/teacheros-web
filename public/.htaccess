@@ -1,0 +1,9 @@
+# SPA-Fallback fuer Apache: Pfade ohne eigene Datei (z. B. /einladung) liefern index.html,
+# das Routing uebernimmt die App. Vite kopiert die Datei aus public/ in den Build.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
