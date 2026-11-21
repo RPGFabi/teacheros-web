@@ -9,5 +9,5 @@ export function statusLabel(status: string, inactiveSince?: string | null): stri
   return status === 'inactive' && inactiveSince ? `${label} seit ${formatDate(inactiveSince)}` : label;
 }
 
-/** Kennzeichnung eines deaktivierten Kontos, dessen Deaktivierung dem Anmeldedienst noch nicht gemeldet ist (Ticket #42). */
+/** Kennzeichnung eines Kontos mit offenem Abgleich: mindestens ein Aufruf an den Anmeldedienst ist noch nicht bestaetigt (Tickets #42, #47). */
 export const SYNC_PENDING_LABEL = 'Abgleich offen';

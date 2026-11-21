@@ -95,7 +95,7 @@ export default function App({
         ))}
       </nav>
       {portal.id === 'account' ? (
-        <AccountPage me={me} error={meError} />
+        <AccountPage me={me} error={meError} apiClient={apiClient} onSessionsRevoked={onReauthenticate} />
       ) : portal.id === 'accounts' ? (
         <AccountsPage
           apiClient={apiClient}

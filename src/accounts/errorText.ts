@@ -4,13 +4,15 @@ import { errorCode } from '../api/errors';
  * Welche Aktion der Kontodetailansicht scheiterte; davon haengen nur wenige Texte ab (Review #12: eine Tabelle statt je
  * Aktion eine eigene).
  */
-export type Flow = 'assign' | 'deactivate' | 'reactivate' | 'resync';
+export type Flow = 'assign' | 'deactivate' | 'reactivate' | 'revoke' | 'resetTotp' | 'resync';
 
 interface FlowText {
   /** Wenn die Aktion mit einem Code scheitert, den die Tabelle nicht kennt. */
   fallback: string;
   /** `permission_not_held` (P2) heisst je Aktion etwas anderes. */
   permissionNotHeld: string;
+  /** `account_not_active` heisst je Aktion etwas anderes; fehlt der Text, gilt der allgemeine. */
+  notActive?: string;
   /** Was nach einem Fehler des Anmeldedienstes unveraendert bleibt (Satzanfang ohne Punkt), falls die Aktion ihn aufruft. */
   unchanged?: string;
 }
@@ -22,7 +24,18 @@ const FLOWS: Record<Flow, FlowText> = {
   },
   deactivate: {
     fallback: 'Das Konto konnte nicht deaktiviert werden. Bitte versuchen Sie es erneut.',
-    permissionNotHeld: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.'
+    permissionNotHeld: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen es deshalb nicht deaktivieren.',
+    notActive: 'Nur aktive Konten lassen sich deaktivieren.'
+  },
+  revoke: {
+    fallback: 'Die Sitzungen konnten nicht beendet werden. Bitte versuchen Sie es erneut.',
+    permissionNotHeld: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen deshalb seine Sitzungen nicht beenden.',
+    notActive: 'Nur bei aktiven Konten lassen sich die Sitzungen beenden.'
+  },
+  resetTotp: {
+    fallback: 'Das TOTP konnte nicht zurückgesetzt werden. Bitte versuchen Sie es erneut.',
+    permissionNotHeld: 'Sie besitzen nicht alle Rechte dieses Kontos und dürfen deshalb sein TOTP nicht zurücksetzen.',
+    notActive: 'Bei Konten, die noch nicht angenommen wurden, gibt es kein TOTP zurückzusetzen.'
   },
   reactivate: {
     fallback: 'Das Konto konnte nicht reaktiviert werden. Bitte versuchen Sie es erneut.',
@@ -49,7 +62,8 @@ const ERROR_TEXT: Record<string, string> = {
   account_not_found: 'Dieses Konto gibt es nicht mehr.',
   forbidden: 'Dafür fehlt Ihnen das erforderliche Recht.',
   self_deactivation: 'Sie können sich nicht selbst deaktivieren.',
-  account_not_active: 'Nur aktive Konten lassen sich deaktivieren.',
+  self_revocation: 'Die eigenen Sitzungen beenden Sie unter „Mein Konto“.',
+  self_totp_reset: 'Sie können Ihr eigenes TOTP nicht über die Verwaltung zurücksetzen.',
   self_reactivation: 'Sie können sich nicht selbst reaktivieren.',
   account_not_inactive: 'Nur deaktivierte Konten lassen sich reaktivieren.',
   self_deleted: 'Die Person hat ihr Konto selbst gelöscht. Das lässt sich nicht rückgängig machen; das Konto bleibt deaktiviert.',
@@ -64,6 +78,8 @@ export function describeFailure(err: unknown, flow: Flow): string {
   switch (code) {
     case 'permission_not_held':
       return text.permissionNotHeld;
+    case 'account_not_active':
+      return text.notActive ?? text.fallback;
     case 'auth_unavailable':
       return text.unchanged
         ? `Der Anmeldedienst ist gerade nicht erreichbar. ${text.unchanged}; bitte versuchen Sie es später noch einmal.`
@@ -75,7 +91,21 @@ export function describeFailure(err: unknown, flow: Flow): string {
   }
 }
 
-/** Was die fachliche Ablehnung des Anmeldedienstes beim Abgleich bedeutet (`account.login_sync_error`); andere Codes erscheinen allgemein. */
+/**
+ * Was ein offener Aufruf bedeutet (Tickets #47 bis #49), je `operation`. Ein neuer Aufruf traegt hier seinen Satz ein;
+ * bis dahin nennt die Ansicht ihn allgemein mit dem Namen.
+ */
+const OPEN_CALL_TEXT: Record<string, string> = {
+  disable_login: 'Das Konto ist hier deaktiviert und kann sich nicht mehr anmelden. Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet.',
+  revoke_sessions: 'Alle Sitzungen des Kontos sind hier beendet. Dem Anmeldedienst ist das aber noch nicht gemeldet; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab.',
+  reset_totp: 'Das TOTP des Kontos ist hier zurückgesetzt und alle Sitzungen sind beendet. Dem Anmeldedienst ist das aber noch nicht gemeldet; bis dahin lehnt die Anwendung jede Anfrage des Kontos ab.'
+};
+
+export function openCallText(operation: string): string {
+  return OPEN_CALL_TEXT[operation] ?? `Ein Aufruf an den Anmeldedienst (${operation}) ist noch offen.`;
+}
+
+/** Was die fachliche Ablehnung des Anmeldedienstes bei einem offenen Aufruf bedeutet (`open_calls[].rejection_code`); andere Codes erscheinen allgemein. */
 export function syncRejectionText(code: string): string {
   return code === 'user_not_found' ? AUTH_SERVICE_UNKNOWN_ACCOUNT : `Der Anmeldedienst hat den Abgleich abgelehnt (${code}).`;
 }

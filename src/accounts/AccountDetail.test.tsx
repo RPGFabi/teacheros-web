@@ -405,10 +405,10 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
   const PENDING: AccountAccess = {
     ...ACCESS,
-    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: true },
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', open_calls: [{ operation: 'disable_login', rejection_code: null }] },
     account_actions: [BLOCKED_DEACTIVATE, { action: 'resync_login', allowed: true, code: null, reason: null }]
   };
-  const SYNCED: AccountAccess = { ...PENDING, account: { ...PENDING.account, login_sync_pending: false }, account_actions: [BLOCKED_DEACTIVATE] };
+  const SYNCED: AccountAccess = { ...PENDING, account: { ...PENDING.account, open_calls: [] }, account_actions: [BLOCKED_DEACTIVATE] };
 
   it('zeigt den Hinweis „Abgleich mit dem Anmeldedienst offen“ und den Knopf „Abgleich wiederholen“', async () => {
     mount({ [path]: { data: PENDING } });
@@ -428,7 +428,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   });
 
   it('nennt bei fachlicher Ablehnung des Anmeldedienstes den Grund verstaendlich statt nur „Abgleich offen“', async () => {
-    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'user_not_found' } } } });
+    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, open_calls: [{ operation: 'disable_login', rejection_code: 'user_not_found' }] } } } });
 
     const section = await screen.findByRole('region', { name: 'Konto' });
     expect(within(section).getByText(/Der Anmeldedienst kennt dieses Konto nicht/)).toBeInTheDocument();
@@ -436,7 +436,7 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
   });
 
   it('nennt bei einem unbekannten Ablehnungscode den Code allgemein', async () => {
-    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, login_sync_error: 'seltsam' } } } });
+    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, open_calls: [{ operation: 'disable_login', rejection_code: 'seltsam' }] } } } });
 
     expect(await screen.findByText(/Der Anmeldedienst hat den Abgleich abgelehnt \(seltsam\)/)).toBeInTheDocument();
   });
@@ -524,6 +524,41 @@ describe('Kontodetail: Abgleich mit dem Anmeldedienst (Ticket #42)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/^Konto deaktiviert\.$/);
   });
 
+  it('listet mehrere offene Aufrufe, jeden mit seinem eigenen Grund (Ticket #47)', async () => {
+    mount({
+      [path]: {
+        data: {
+          ...PENDING,
+          account: {
+            ...PENDING.account,
+            open_calls: [
+              { operation: 'disable_login', rejection_code: 'user_not_found' },
+              { operation: 'revoke_sessions', rejection_code: null },
+              { operation: 'reset_totp', rejection_code: 'seltsam' }
+            ]
+          }
+        }
+      }
+    });
+
+    const list = within(await screen.findByRole('region', { name: 'Konto' })).getByRole('list', { name: 'Offene Aufrufe' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent('Dem Anmeldedienst ist die Deaktivierung aber noch nicht gemeldet');
+    expect(items[0]).toHaveTextContent('Der Anmeldedienst kennt dieses Konto nicht');
+    expect(items[1]).toHaveTextContent('Alle Sitzungen des Kontos sind hier beendet');
+    expect(items[1]).not.toHaveTextContent(/abgelehnt/);
+    expect(items[2]).toHaveTextContent('Das TOTP des Kontos ist hier zurückgesetzt');
+    expect(items[2]).toHaveTextContent('Der Anmeldedienst hat den Abgleich abgelehnt (seltsam)');
+  });
+
+  it('zeigt „Abgleich wiederholen“ nur einmal, auch bei mehreren offenen Aufrufen', async () => {
+    mount({ [path]: { data: { ...PENDING, account: { ...PENDING.account, open_calls: [{ operation: 'disable_login', rejection_code: null }, { operation: 'revoke_sessions', rejection_code: null }] } } } });
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.getAllByRole('button', { name: 'Abgleich wiederholen' })).toHaveLength(1);
+  });
+
   it('kennzeichnet den Abgleich auch in der Statuszeile', async () => {
     mount({ [path]: { data: PENDING } });
 
@@ -536,10 +571,10 @@ describe('Kontodetail: Konto reaktivieren (Ticket #43)', () => {
   const BLOCKED_DEACTIVATE = { action: 'deactivate', allowed: false, code: 'account_not_active', reason: 'Nur aktive Konten lassen sich deaktivieren.' } as const;
   const INACTIVE: AccountAccess = {
     ...ACCESS,
-    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', login_sync_pending: false },
+    account: { ...ACCESS.account, status: 'inactive', inactive_since: '2026-11-18T09:00:00+00:00', inactive_reason: 'admin_locked', open_calls: [] },
     account_actions: [BLOCKED_DEACTIVATE, { action: 'reactivate', allowed: true, code: null, reason: null }]
   };
-  const ACTIVE_AGAIN: AccountAccess = { ...ACCESS, account: { ...ACCESS.account, login_sync_pending: false } };
+  const ACTIVE_AGAIN: AccountAccess = { ...ACCESS, account: { ...ACCESS.account, open_calls: [] } };
 
   it('zeigt „Reaktivieren“ aktiv bei einem deaktivierten Konto, wenn die API die Aktion erlaubt', async () => {
     mount({ [path]: { data: INACTIVE } });
@@ -611,5 +646,224 @@ describe('Kontodetail: Konto reaktivieren (Ticket #43)', () => {
 
     const section = await screen.findByRole('region', { name: 'Konto' });
     expect(section).toHaveTextContent('Die Person muss sich danach neu anmelden');
+  });
+});
+
+describe('Kontodetail: Sitzungen beenden (Ticket #48)', () => {
+  const REVOKE = `POST /api/accounts/${ID}/revoke-sessions`;
+  const ALLOWED = { action: 'revoke_sessions', allowed: true, code: null, reason: null } as const;
+  const withAction = (revoke: AccountAccess['account_actions'][number], over: Partial<AccountAccess['account']> = {}): AccountAccess => ({
+    ...ACCESS,
+    account: { ...ACCESS.account, ...over },
+    account_actions: [...ACCESS.account_actions, revoke]
+  });
+  const REVOCABLE = withAction(ALLOWED);
+  const confirm = async () => userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sitzungen beenden' }));
+
+  it('zeigt „Sitzungen beenden …“ aktiv, wenn die API die Aktion erlaubt, und fragt vor dem Ausfuehren nach', async () => {
+    const { calls } = mount({ [path]: { data: REVOCABLE } });
+
+    const button = await screen.findByRole('button', { name: 'Sitzungen beenden …' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('ziel@schule.test');
+    expect(dialog).toHaveTextContent('Das Konto bleibt aktiv');
+    expect(dialog).toHaveTextContent('neu anmelden');
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('Abbrechen im Dialog beendet nichts', async () => {
+    const { calls } = mount({ [path]: { data: REVOCABLE } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sitzungen beenden …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('beendet nach Bestaetigung die Sitzungen per POST und meldet den Erfolg', async () => {
+    const { calls } = mount({ [path]: { data: REVOCABLE }, [REVOKE]: { data: withAction(ALLOWED, { open_calls: [] }) } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sitzungen beenden …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^Alle Sitzungen beendet\.$/);
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/revoke-sessions`]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('nennt bei offenem Aufruf, dass der Anmeldedienst es noch nicht bestaetigt hat, und zeigt „Abgleich wiederholen“', async () => {
+    const open = withAction(ALLOWED, { open_calls: [{ operation: 'revoke_sessions', rejection_code: null }] });
+    open.account_actions.push({ action: 'resync_login', allowed: true, code: null, reason: null });
+    mount({ [path]: { data: REVOCABLE }, [REVOKE]: { data: open } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sitzungen beenden …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Sitzungen beendet. Der Anmeldedienst hat das noch nicht bestätigt');
+    const section = screen.getByRole('region', { name: 'Konto' });
+    expect(section).toHaveTextContent('Alle Sitzungen des Kontos sind hier beendet');
+    expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('laesst die Aktion sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
+    const reason = 'Nur bei aktiven Konten lassen sich die Sitzungen beenden.';
+    mount({ [path]: { data: withAction({ action: 'revoke_sessions', allowed: false, code: 'account_not_active', reason }, { status: 'invited' }) } });
+
+    const button = await screen.findByRole('button', { name: 'Sitzungen beenden …' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+  });
+
+  it('blendet die Aktion aus, wenn die API sie nicht nennt', async () => {
+    mount({});
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByRole('button', { name: 'Sitzungen beenden …' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['self_revocation', 409, 'unter „Mein Konto“'],
+    ['account_not_active', 409, 'Nur bei aktiven Konten'],
+    ['permission_not_held', 403, 'seine Sitzungen nicht beenden'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
+  ])('uebersetzt den Fehlercode %s in einen Text, schliesst den Dialog und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mount({ [path]: { data: REVOCABLE }, [REVOKE]: { status, data: { error: 'x', code } } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sitzungen beenden …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [path]: { data: REVOCABLE }, [REVOKE]: { status: 500 } });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sitzungen beenden …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Die Sitzungen konnten nicht beendet werden');
+  });
+});
+
+describe('Kontodetail: TOTP zuruecksetzen (Ticket #49)', () => {
+  const RESET = `POST /api/accounts/${ID}/reset-totp`;
+  const ALLOWED = { action: 'reset_totp', allowed: true, code: null, reason: null } as const;
+  const withAction = (reset: AccountAccess['account_actions'][number], over: Partial<AccountAccess['account']> = {}): AccountAccess => ({
+    ...ACCESS,
+    account: { ...ACCESS.account, ...over },
+    account_actions: [...ACCESS.account_actions, reset]
+  });
+  const RESETTABLE = withAction(ALLOWED);
+  const confirm = async () => userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'TOTP zurücksetzen' }));
+
+  it('zeigt „TOTP zurücksetzen …“ aktiv, wenn die API die Aktion erlaubt, und fragt vor dem Ausfuehren nach', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE } });
+
+    const button = await screen.findByRole('button', { name: 'TOTP zurücksetzen …' });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('ziel@schule.test');
+    expect(dialog).toHaveTextContent('TOTP neu einrichten');
+    expect(dialog).not.toHaveTextContent('Recovery-Codes'); // nur der nötige Hinweis, kein Aufzählen der Folgen
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('Abbrechen im Dialog setzt nichts zurueck', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abbrechen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('setzt nach Bestaetigung das TOTP per POST zurueck und meldet den Erfolg', async () => {
+    const { calls } = mount({ [path]: { data: RESETTABLE }, [RESET]: { data: withAction(ALLOWED, { open_calls: [] }) } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/^TOTP zurückgesetzt\. Alle Sitzungen des Kontos sind beendet; die Person muss TOTP neu einrichten.$/);
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([`/api/accounts/${ID}/reset-totp`]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('nennt bei offenem Aufruf, dass der Anmeldedienst es noch nicht bestaetigt hat, und zeigt „Abgleich wiederholen“', async () => {
+    const open = withAction(ALLOWED, { open_calls: [{ operation: 'reset_totp', rejection_code: null }] });
+    open.account_actions.push({ action: 'resync_login', allowed: true, code: null, reason: null });
+    mount({ [path]: { data: RESETTABLE }, [RESET]: { data: open } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('status')).toHaveTextContent('TOTP zurückgesetzt. Der Anmeldedienst hat das noch nicht bestätigt');
+    const section = screen.getByRole('region', { name: 'Konto' });
+    expect(section).toHaveTextContent('Das TOTP des Kontos ist hier zurückgesetzt');
+    expect(within(section).getByRole('button', { name: 'Abgleich wiederholen' })).toBeEnabled();
+  });
+
+  it('laesst die Aktion sichtbar, aber gesperrt, mit der Begruendung der API', async () => {
+    const reason = 'Bei Konten, die noch nicht angenommen wurden, gibt es kein TOTP zurückzusetzen.';
+    mount({ [path]: { data: withAction({ action: 'reset_totp', allowed: false, code: 'account_not_active', reason }, { status: 'invited' }) } });
+
+    const button = await screen.findByRole('button', { name: 'TOTP zurücksetzen …' });
+
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(reason);
+  });
+
+  it('bietet die Aktion auch bei einem deaktivierten Konto an, wenn die API sie erlaubt', async () => {
+    mount({ [path]: { data: withAction(ALLOWED, { status: 'inactive', inactive_since: '2026-11-18T10:00:00+00:00', inactive_reason: 'admin_locked' }) } });
+
+    expect(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' })).toBeEnabled();
+  });
+
+  it('blendet die Aktion aus, wenn die API sie nicht nennt', async () => {
+    mount({});
+
+    await screen.findByRole('region', { name: 'Konto' });
+    expect(screen.queryByRole('button', { name: 'TOTP zurücksetzen …' })).not.toBeInTheDocument();
+  });
+
+  it('verraet nicht, ob TOTP eingerichtet ist', async () => {
+    mount({ [path]: { data: RESETTABLE } });
+
+    const section = await screen.findByRole('region', { name: 'Konto' });
+    expect(section).not.toHaveTextContent(/eingerichtet (ist|war)/);
+  });
+
+  it.each([
+    ['self_totp_reset', 409, 'nicht über die Verwaltung'],
+    ['account_not_active', 409, 'noch nicht angenommen'],
+    ['permission_not_held', 403, 'sein TOTP nicht zurücksetzen'],
+    ['forbidden', 403, 'Dafür fehlt Ihnen das erforderliche Recht']
+  ])('uebersetzt den Fehlercode %s in einen Text, schliesst den Dialog und laedt die Sicht neu', async (code, status, text) => {
+    const { calls } = mount({ [path]: { data: RESETTABLE }, [RESET]: { status, data: { error: 'x', code } } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/access'))).toHaveLength(2);
+  });
+
+  it('meldet sonstige Fehler allgemein', async () => {
+    mount({ [path]: { data: RESETTABLE }, [RESET]: { status: 500 } });
+    await userEvent.click(await screen.findByRole('button', { name: 'TOTP zurücksetzen …' }));
+
+    await confirm();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das TOTP konnte nicht zurückgesetzt werden');
   });
 });
