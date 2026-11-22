@@ -1,55 +1,64 @@
 import { useCallback, useId, useState, type FormEvent } from 'react';
 import { Button, Card, Chip, ConfirmDialog, FormField, Select, TextInput } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
-import { useResource } from '../shared/useResource';
+import { useResource } from '../useResource';
 import {
+  TEACHERS_ENDPOINT,
   assignmentFormProblem,
   canDelete,
   canEnd,
-  describeTeacherAssignmentFailure,
-  periodText,
+  describeAssignmentFailure,
   statusLabel,
   teacherLabel,
-  type Teacher,
-  type TeacherAssignment,
-  type TeacherAssignmentAction
-} from './teacherAssignments';
+  validityText,
+  type Assignment,
+  type AssignmentAction,
+  type AssignmentConfig,
+  type Teacher
+} from './assignments';
 
 interface Props {
   apiClient: AxiosInstance;
-  teachingGroupId: string;
+  /** Welche Art von Zuordnung: Endpunkt, Schluessel und Woerter (`TEACHER_ASSIGNMENTS`, `CLASS_LEADERS`). */
+  config: AssignmentConfig;
+  /** Kennung des Elternobjekts, dem zugeordnet wird (Fachgruppe oder Klasse). */
+  parentId: string;
   /** Recht `teacher_assignments.manage` aus GET /api/me; ohne es gibt es weder Formular noch Aktionen (die API verweigert sie ohnehin). */
   canManage: boolean;
-  /** Die Fachgruppe ist archiviert (Ticket #65): ihr wird nichts neu zugeordnet; bestehende Zuordnungen lassen sich weiter beenden. */
+  /** Das Elternobjekt ist archiviert: ihm wird nichts neu zugeordnet; bestehende Zuordnungen lassen sich weiter beenden. */
   archived?: boolean;
 }
 
 const STATUS_VARIANT: Record<string, 'success' | 'primary' | 'neutral'> = { running: 'success', upcoming: 'primary', ended: 'neutral' };
 
 /**
- * Abschnitt „Lehrkräfte“ in der Detailansicht einer Fachgruppe (Ticket #67; Glossar: Lehrkraft-Zuordnung,
- * Gueltigkeitszeitraum): die Zuordnungen mit Zeitraum und Status (kommend, laufend, beendet; ein deaktiviertes Konto bleibt
- * als Historie sichtbar) und, mit `teacher_assignments.manage`, Zuordnen (Lehrkraft, Beginn und Ende optional), Beenden
- * (letzter Tag, leer = heute) und Loeschen (mit Bestaetigung, nur fuer kommende). Welche Zeitraeume, Ueberschneidungen und
- * Obergrenzen zulaessig sind, entscheidet allein die API; hier wird ihre Ablehnung in einen Hinweis uebersetzt.
+ * Der Abschnitt „Lehrkräfte“ einer Fachgruppe (Ticket #67) und „Klassenleitung“ einer Klasse (Ticket #68) in der Detailansicht;
+ * Glossar: Lehrkraft-Zuordnung, Klassenleitung, Gueltigkeitszeitraum. Eine Komponente fuer beide, die Art kommt als
+ * {@link AssignmentConfig}: die Zuordnungen mit Lehrkraft (nur Anmeldename), Gueltigkeitszeitraum und Status (kommend, laufend,
+ * beendet) und, mit `teacher_assignments.manage`, Zuordnen (Lehrkraft, Beginn und Ende optional), Beenden (letzter Tag, leer =
+ * heute) und Loeschen (mit Bestaetigung, nur fuer kommende). Welche Gueltigkeitszeitraeume, Ueberschneidungen und Obergrenzen
+ * zulaessig sind, entscheidet allein die API; hier wird ihre Ablehnung in einen Hinweis uebersetzt. Die waehlbaren Lehrkraefte
+ * (mit E-Mail, nur fuer Verwaltende) kommen fuer beide vom selben Endpunkt.
  */
-export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, canManage, archived = false }: Props) {
+export default function AssignmentSection({ apiClient, config, parentId, canManage, archived = false }: Props) {
+  const { texts } = config;
   const formId = useId();
   const [teacherId, setTeacherId] = useState('');
   const [startsOn, setStartsOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
-  const [ending, setEnding] = useState<TeacherAssignment | null>(null);
+  const [ending, setEnding] = useState<Assignment | null>(null);
   const [lastDay, setLastDay] = useState('');
-  const [deleting, setDeleting] = useState<TeacherAssignment | null>(null);
+  const [deleting, setDeleting] = useState<Assignment | null>(null);
 
   const fetchAssignments = useCallback(
-    async () => (await apiClient.get<{ teacher_assignments: TeacherAssignment[] }>('/api/teacher-assignments', { params: { teaching_group_id: teachingGroupId } })).data.teacher_assignments,
-    [apiClient, teachingGroupId]
+    async () => (await apiClient.get<Record<string, Assignment[]>>(config.endpoint, { params: { [config.parentKey]: parentId } })).data[config.listKey],
+    [apiClient, config, parentId]
   );
-  const { data: assignments, loadError, reload: load, busy, notice, error, run } = useResource<TeacherAssignment[], TeacherAssignmentAction>(fetchAssignments, describeTeacherAssignmentFailure);
+  const describeFailure = useCallback((err: unknown, action: AssignmentAction) => describeAssignmentFailure(config, err, action), [config]);
+  const { data: assignments, loadError, reload: load, busy, notice, error, run } = useResource<Assignment[], AssignmentAction>(fetchAssignments, describeFailure);
 
   // Die Auswahl der Lehrkraefte braucht das Verwaltungsrecht: ohne es wird sie nicht geladen.
-  const fetchTeachers = useCallback(async () => (canManage ? (await apiClient.get<{ teachers: Teacher[] }>('/api/teacher-assignments/teachers')).data.teachers : []), [apiClient, canManage]);
+  const fetchTeachers = useCallback(async () => (canManage ? (await apiClient.get<{ teachers: Teacher[] }>(TEACHERS_ENDPOINT)).data.teachers : []), [apiClient, canManage]);
   const { data: teachers, loadError: teachersError, reload: reloadTeachers } = useResource<Teacher[]>(fetchTeachers);
 
   const problem = assignmentFormProblem(teacherId, startsOn, endsOn);
@@ -63,13 +72,13 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
     }
     const chosen = teachers?.find((t) => t.id === teacherId);
     const ok = await run('create', async () => {
-      await apiClient.post('/api/teacher-assignments', {
-        teaching_group_id: teachingGroupId,
+      await apiClient.post(config.endpoint, {
+        [config.parentKey]: parentId,
         teacher_id: teacherId,
         ...(startsOn !== '' && { starts_on: startsOn }),
         ...(endsOn !== '' && { ends_on: endsOn })
       });
-      return `${chosen?.login_name ?? 'Die Lehrkraft'} wurde der Fachgruppe zugeordnet.`;
+      return texts.created(chosen?.login_name);
     });
     if (ok) {
       setTeacherId('');
@@ -78,10 +87,10 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
     }
   };
 
-  const end = async (target: TeacherAssignment) => {
+  const end = async (target: Assignment) => {
     const ok = await run('end', async () => {
-      await apiClient.post(`/api/teacher-assignments/${target.id}/end`, lastDay === '' ? {} : { ends_on: lastDay });
-      return `Die Zuordnung von ${target.teacher.login_name} wurde beendet.`;
+      await apiClient.post(`${config.endpoint}/${target.id}/end`, lastDay === '' ? {} : { ends_on: lastDay });
+      return texts.ended(target.teacher.login_name);
     });
     if (ok) {
       setEnding(null);
@@ -89,26 +98,26 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
     }
   };
 
-  const remove = async (target: TeacherAssignment) => {
+  const remove = async (target: Assignment) => {
     setDeleting(null);
     await run('delete', async () => {
-      await apiClient.post(`/api/teacher-assignments/${target.id}/delete`);
-      return `Die Zuordnung von ${target.teacher.login_name} wurde gelöscht.`;
+      await apiClient.post(`${config.endpoint}/${target.id}/delete`);
+      return texts.deleted(target.teacher.login_name);
     });
   };
 
   return (
     <>
-      <h2>Lehrkräfte</h2>
+      <h2>{texts.heading}</h2>
       {canManage && archived && (
         <Card>
-          <p>Die Fachgruppe ist archiviert: Ihr lassen sich keine Lehrkräfte neu zuordnen. Bestehende Zuordnungen bleiben und lassen sich beenden.</p>
+          <p>{texts.archivedNotice}</p>
         </Card>
       )}
       {canManage && !archived && (
         <Card>
-          <form aria-label="Lehrkraft zuordnen" onSubmit={(event) => void submit(event)}>
-            <h3>Lehrkraft zuordnen</h3>
+          <form aria-label={texts.createForm} onSubmit={(event) => void submit(event)}>
+            <h3>{texts.createForm}</h3>
             {teachersError && (
               <>
                 <p role="alert">Die Auswahl der Lehrkräfte konnte nicht geladen werden.</p>
@@ -136,10 +145,7 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
             <FormField label="Ende (einschließlich)" htmlFor={`${formId}-end`}>
               <TextInput id={`${formId}-end`} type="date" hasError={hint !== undefined && endsOn !== ''} value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
             </FormField>
-            <p>
-              Ohne Beginn gilt die Zuordnung ab dem ersten Tag des Schuljahres, ohne Ende offen, also bis zum Ende des Schuljahres. Beide Tage liegen im Schuljahr der Fachgruppe.
-              Mehrere Lehrkräfte können zugleich zugeordnet sein, bis zur Obergrenze der Schule; dieselbe Lehrkraft nicht mit sich überschneidendem Zeitraum.
-            </p>
+            <p>{texts.createHelp}</p>
             <p aria-live="polite">{hint !== undefined && <span role="alert">{hint}</span>}</p>
             <Button type="submit" disabled={busy || teachers === null || problem !== undefined}>Zuordnen</Button>
           </form>
@@ -148,17 +154,17 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
       {canManage && ending && (
         <Card>
           <form
-            aria-label="Zuordnung beenden"
+            aria-label={texts.endForm}
             onSubmit={(event) => {
               event.preventDefault();
               void end(ending);
             }}
           >
-            <h3>Zuordnung von {ending.teacher.login_name} beenden</h3>
+            <h3>{texts.endTitle(ending.teacher.login_name)}</h3>
             <FormField label="Letzter Tag (leer: heute)" htmlFor={`${formId}-last-day`}>
               <TextInput id={`${formId}-last-day`} type="date" value={lastDay} onChange={(e) => setLastDay(e.target.value)} />
             </FormField>
-            <p>Beenden setzt das Ende einer offenen Zuordnung oder verschiebt ein späteres Ende nach vorn. Was schon gegolten hat, bleibt unverändert: der letzte Tag liegt frühestens heute.</p>
+            <p>{texts.endHelp}</p>
             <Button type="submit" disabled={busy}>Beenden</Button>{' '}
             <Button
               variant="secondary"
@@ -176,8 +182,8 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
       {error && <p role="alert">{error}</p>}
       <ConfirmDialog
         open={deleting !== null}
-        title={`Zuordnung von ${deleting?.teacher.login_name ?? ''} löschen?`}
-        description={`Die Zuordnung (${deleting ? periodText(deleting) : ''}) wird endgültig gelöscht. Das lässt sich nicht rückgängig machen. Nur eine Zuordnung, die noch nie gegolten hat, lässt sich löschen; sonst bleibt das Beenden.`}
+        title={texts.deleteTitle(deleting?.teacher.login_name ?? '')}
+        description={texts.deleteDescription(deleting ? validityText(deleting) : '')}
         confirmText="Löschen"
         variant="danger"
         onConfirm={() => deleting && void remove(deleting)}
@@ -186,12 +192,12 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
       <Card>
         {loadError && (
           <>
-            <p role="alert">Die Lehrkräfte der Fachgruppe konnten nicht geladen werden.</p>
+            <p role="alert">{texts.loadError}</p>
             <Button variant="secondary" onClick={() => void load()}>Erneut laden</Button>
           </>
         )}
-        {!loadError && assignments === null && <p>Lehrkräfte werden geladen …</p>}
-        {!loadError && assignments !== null && assignments.length === 0 && <p>Dieser Fachgruppe ist noch keine Lehrkraft zugeordnet.</p>}
+        {!loadError && assignments === null && <p>{texts.loading}</p>}
+        {!loadError && assignments !== null && assignments.length === 0 && <p>{texts.empty}</p>}
         {!loadError && assignments !== null && assignments.length > 0 && (
           <table className="responsive-table">
             <thead>
@@ -205,16 +211,8 @@ export default function TeacherAssignmentsSection({ apiClient, teachingGroupId, 
             <tbody>
               {assignments.map((a) => (
                 <tr key={a.id}>
-                  <th scope="row">
-                    {teacherLabel(a.teacher)}
-                    {a.teacher.status === 'inactive' && (
-                      <>
-                        {' '}
-                        <Chip variant="neutral">Konto deaktiviert</Chip>
-                      </>
-                    )}
-                  </th>
-                  <td data-label="Gültigkeitszeitraum">{periodText(a)}</td>
+                  <th scope="row">{a.teacher.login_name}</th>
+                  <td data-label="Gültigkeitszeitraum">{validityText(a)}</td>
                   <td data-label="Status">
                     <Chip variant={STATUS_VARIANT[a.status] ?? 'neutral'}>{statusLabel(a.status)}</Chip>
                   </td>
