@@ -7,6 +7,9 @@ import { ACCOUNT_DETAIL_PERMISSIONS, hasPermission } from './account/permissions
 import AccountsPage from './accounts/AccountsPage';
 import RolesPage from './roles/RolesPage';
 import ClassesPage from './classes/ClassesPage';
+import SubjectsPage from './subjects/SubjectsPage';
+import SchoolSettingsPage from './school-settings/SchoolSettingsPage';
+import TeachingGroupsPage from './teaching-groups/TeachingGroupsPage';
 import SchoolYearsPage from './school-years/SchoolYearsPage';
 import MfaEnrollmentPage from './auth/MfaEnrollmentPage';
 import { apiClient as defaultApiClient, authClient as defaultAuthClient } from './api/clients';
@@ -114,7 +117,17 @@ export default function App({
           canManageClasses={hasPermission(me, 'classes.manage')}
         />
       ) : portal.id === 'classes' ? (
-        <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} />
+        <ClassesPage apiClient={apiClient} canManage={hasPermission(me, 'classes.manage')} canManageAssignments={hasPermission(me, 'teacher_assignments.manage')} />
+      ) : portal.id === 'subjects' ? (
+        <SubjectsPage apiClient={apiClient} canManage={hasPermission(me, 'subjects.manage')} />
+      ) : portal.id === 'school-settings' ? (
+        <SchoolSettingsPage apiClient={apiClient} />
+      ) : portal.id === 'teaching-groups' ? (
+        <TeachingGroupsPage
+          apiClient={apiClient}
+          canManage={hasPermission(me, 'teaching_groups.manage')}
+          canManageAssignments={hasPermission(me, 'teacher_assignments.manage')}
+        />
       ) : (
         <main className="content">
           <h1>{portal.label}</h1>

@@ -1,4 +1,25 @@
 :root {
+  /* Dunkles Farbschema fuer die react-ui-Komponenten: deren Standard-Tokens sind hell
+     (weisse Flaechen), die App ist dunkel gestaltet. Ohne diese Werte erscheint hellblauer
+     Text auf weissen Karten und Eingabefeldern. */
+  --color-bg: #091827;
+  --color-bg-soft: #10263f;
+  --color-surface: #0e2134;
+  --color-text: #e5eefb;
+  --color-text-muted: #c7d9f5;
+  --color-text-disabled: #6b819c;
+  --color-border-soft: rgba(138, 180, 255, 0.2);
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-input-bg: #0b1c2e;
+  --color-input-border: #35506f;
+  --color-input-border-focus: #8ab4ff;
+  --color-input-text: #e5eefb;
+  --color-input-placeholder: #7f95b3;
+  --color-danger: #f87171;
+}
+
+:root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   color: #e5eefb;
