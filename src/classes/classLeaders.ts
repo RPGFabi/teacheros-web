@@ -1,49 +1,49 @@
-import { describeFailure, type FailureTexts } from '../api/errors';
-import type { AssignmentStatus, Teacher } from '../teaching-groups/teacherAssignments';
+import { assignmentFailureTexts, type AssignmentConfig } from '../shared/assignments/assignments';
 
 /**
- * Klassenleitung laut `GET /api/class-leaders?class_id=…` (Ticket #68; Glossar: Klassenleitung, Gueltigkeitszeitraum). Gleiche
- * Form wie die Lehrkraft-Zuordnung zu einer Fachgruppe (Ticket #67), aber an der Klasse: `starts_on` ist der erste, `ends_on` der
- * letzte Tag (einschliesslich), `null` heisst offen, also bis zum Ende des Schuljahres; `last_day` ist dann dieses Schuljahresende.
- * Zeitraum, Status, Beenden und Loeschen behandelt `teaching-groups/teacherAssignments.ts` (`periodText`, `statusLabel`,
- * `canEnd`, `canDelete`, `assignmentFormProblem`, `teacherLabel`) fuer beide gleich.
+ * Die Klassenleitung (Ticket #68; Glossar: Klassenleitung, Gueltigkeitszeitraum) als Art von Zuordnung fuer
+ * `AssignmentSection`: `GET /api/class-leaders?class_id=…`. Gleiche Form wie die Lehrkraft-Zuordnung zu einer Fachgruppe
+ * (Ticket #67), aber an der Klasse. Typen, Anzeige und gemeinsame Fehlertexte stehen in `shared/assignments/assignments.ts`.
  */
-export interface ClassLeader {
-  id: string;
-  class_id: string;
-  teacher: Teacher;
-  starts_on: string;
-  ends_on: string | null;
-  last_day: string;
-  status: AssignmentStatus | string;
-}
-
-/** Aktionen auf Klassenleitungen; bestimmt den allgemeinen Fehlertext, wenn kein Code passt. */
-export type ClassLeaderAction = 'create' | 'end' | 'delete';
-
-const FAILURE_TEXTS: FailureTexts<ClassLeaderAction> = {
-  codes: {
-    forbidden: 'Dafür fehlt Ihnen das Recht „Lehrkraft-Zuordnungen verwalten“.',
-    class_not_found: 'Die Klasse gibt es nicht mehr. Bitte laden Sie die Seite neu.',
-    class_archived: 'Die Klasse ist archiviert. Ihr lässt sich keine Klassenleitung neu zuordnen. Stellen Sie sie zuerst wieder her.',
-    class_leader_not_found: 'Die Klassenleitung gibt es nicht mehr. Bitte laden Sie die Seite neu.',
-    teacher_not_selectable: 'Das Konto ist keine wählbare Lehrkraft mehr: Es braucht die Rolle Lehrkraft und darf nicht deaktiviert sein. Bitte wählen Sie neu.',
-    assignment_overlap: 'Die Lehrkraft ist an diesen Tagen schon Klassenleitung dieser Klasse. Gültigkeitszeiträume derselben Lehrkraft dürfen sich nicht überschneiden; nacheinander ist möglich.',
-    assignment_limit_reached: 'An mindestens einem dieser Tage hat die Klasse schon so viele Klassenleitungen zugleich, wie die Schule erlaubt (Schuleinstellung „Klassenleitungen je Klasse“).',
-    assignment_applied: 'Die Klassenleitung hat schon gegolten. Sie lässt sich nicht löschen oder rückwirkend kürzen, nur beenden: frühestens heute.',
-    assignment_ended: 'Die Klassenleitung ist bereits beendet.',
-    period_outside_school_year: 'Beginn und Ende müssen innerhalb des Schuljahres der Klasse liegen.',
-    invalid_period: 'Der Gültigkeitszeitraum passt nicht: Das Ende darf nicht vor dem Beginn liegen und muss beim Beenden vor dem bisherigen Ende liegen.',
-    invalid_request: 'Bitte wählen Sie eine Lehrkraft und geben Sie Beginn und Ende als Kalendertag an.'
+export const CLASS_LEADERS: AssignmentConfig = {
+  endpoint: '/api/class-leaders',
+  parentKey: 'class_id',
+  listKey: 'class_leaders',
+  texts: {
+    heading: 'Klassenleitung',
+    loading: 'Klassenleitungen werden geladen …',
+    empty: 'Dieser Klasse ist noch keine Klassenleitung zugeordnet.',
+    loadError: 'Die Klassenleitungen der Klasse konnten nicht geladen werden.',
+    archivedNotice: 'Die Klasse ist archiviert: Ihr lässt sich keine Klassenleitung neu zuordnen. Bestehende Klassenleitungen bleiben und lassen sich beenden.',
+    createForm: 'Klassenleitung zuordnen',
+    createHelp:
+      'Ohne Beginn gilt die Klassenleitung ab dem ersten Tag des Schuljahres, ohne Ende offen, also bis zum Ende des Schuljahres. Beide Tage liegen im Schuljahr der Klasse. ' +
+      'Mehrere Lehrkräfte können zugleich Klassenleitung sein, bis zur Obergrenze der Schule; dieselbe Lehrkraft nicht mit sich überschneidendem Gültigkeitszeitraum.',
+    created: (login) => `${login ?? 'Die Lehrkraft'} wurde als Klassenleitung eingesetzt.`,
+    endForm: 'Klassenleitung beenden',
+    endTitle: (login) => `Klassenleitung von ${login} beenden`,
+    endHelp: 'Beenden setzt das Ende einer offenen Klassenleitung oder verschiebt ein späteres Ende nach vorn. Was schon gegolten hat, bleibt unverändert: der letzte Tag liegt frühestens heute.',
+    ended: (login) => `Die Klassenleitung von ${login} wurde beendet.`,
+    deleteTitle: (login) => `Klassenleitung von ${login} löschen?`,
+    deleteDescription: (validity) =>
+      `Die Klassenleitung (${validity}) wird endgültig gelöscht. Das lässt sich nicht rückgängig machen. Nur eine Klassenleitung, die noch nie gegolten hat, lässt sich löschen; sonst bleibt das Beenden.`,
+    deleted: (login) => `Die Klassenleitung von ${login} wurde gelöscht.`
   },
-  fallback: {
-    create: 'Die Klassenleitung konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
-    end: 'Die Klassenleitung konnte nicht beendet werden. Bitte versuchen Sie es erneut.',
-    delete: 'Die Klassenleitung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.'
-  }
+  failure: assignmentFailureTexts(
+    {
+      class_not_found: 'Die Klasse gibt es nicht mehr. Bitte laden Sie die Seite neu.',
+      class_archived: 'Die Klasse ist archiviert. Ihr lässt sich keine Klassenleitung neu zuordnen. Stellen Sie sie zuerst wieder her.',
+      class_leader_not_found: 'Die Klassenleitung gibt es nicht mehr. Bitte laden Sie die Seite neu.',
+      assignment_overlap: 'Die Lehrkraft ist an diesen Tagen schon Klassenleitung dieser Klasse. Gültigkeitszeiträume derselben Lehrkraft dürfen sich nicht überschneiden; nacheinander ist möglich.',
+      assignment_limit_reached: 'An mindestens einem dieser Tage hat die Klasse schon so viele Klassenleitungen zugleich, wie die Schule erlaubt (Schuleinstellung „Klassenleitungen je Klasse“).',
+      assignment_applied: 'Die Klassenleitung hat schon gegolten. Sie lässt sich nicht löschen oder rückwirkend kürzen, nur beenden: frühestens heute.',
+      assignment_ended: 'Die Klassenleitung ist bereits beendet.',
+      validity_outside_school_year: 'Beginn und Ende müssen innerhalb des Schuljahres der Klasse liegen.'
+    },
+    {
+      create: 'Die Klassenleitung konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+      end: 'Die Klassenleitung konnte nicht beendet werden. Bitte versuchen Sie es erneut.',
+      delete: 'Die Klassenleitung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.'
+    }
+  )
 };
-
-/** Text zu einer abgelehnten Anfrage auf Klassenleitungen. */
-export function describeClassLeaderFailure(err: unknown, action: ClassLeaderAction = 'create'): string {
-  return describeFailure(err, action, FAILURE_TEXTS);
-}

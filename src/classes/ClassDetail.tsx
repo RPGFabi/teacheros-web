@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import { Button, Card, Chip } from '@hoelzle/react-ui';
-import ClassLeadersSection from './ClassLeadersSection';
+import AssignmentSection from '../shared/assignments/AssignmentSection';
+import { CLASS_LEADERS } from './classLeaders';
 import type { SchoolClass } from './classes';
 
 interface Props {
@@ -34,7 +35,7 @@ export default function ClassDetail({ apiClient, schoolClass, canManageAssignmen
           )}
         </dl>
       </Card>
-      <ClassLeadersSection apiClient={apiClient} classId={schoolClass.id} canManage={canManageAssignments} archived={schoolClass.archived} />
+      <AssignmentSection apiClient={apiClient} config={CLASS_LEADERS} parentId={schoolClass.id} canManage={canManageAssignments} archived={schoolClass.archived} />
     </main>
   );
 }

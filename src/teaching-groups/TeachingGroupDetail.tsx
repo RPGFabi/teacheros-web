@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { Button, Card, Chip } from '@hoelzle/react-ui';
 import type { AxiosInstance } from 'axios';
 import { useResource } from '../shared/useResource';
-import TeacherAssignmentsSection from './TeacherAssignmentsSection';
+import AssignmentSection from '../shared/assignments/AssignmentSection';
+import { TEACHER_ASSIGNMENTS } from './teacherAssignments';
 import type { TeachingGroup } from './teachingGroups';
 
 interface Props {
@@ -66,7 +67,7 @@ export default function TeachingGroupDetail({ apiClient, id, canManageAssignment
               ))}
             </ul>
           </Card>
-          <TeacherAssignmentsSection apiClient={apiClient} teachingGroupId={group.id} canManage={canManageAssignments} archived={group.archived} />
+          <AssignmentSection apiClient={apiClient} config={TEACHER_ASSIGNMENTS} parentId={group.id} canManage={canManageAssignments} archived={group.archived} />
         </>
       )}
     </main>
